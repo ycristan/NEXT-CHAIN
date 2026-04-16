@@ -828,9 +828,10 @@ export function PickingLine() {
   }
 
   // Racks visible in the current tab
-  const visibleRacks = activeTypeId
-    ? racks.filter(r => r.rack_type?.id === activeTypeId)
-    : racks
+  const visibleRacks = useMemo(
+    () => activeTypeId ? racks.filter(r => r.rack_type?.id === activeTypeId) : racks,
+    [racks, activeTypeId]
+  )
 
   const searchableSlots = useMemo(() =>
     visibleRacks.flatMap(r =>
