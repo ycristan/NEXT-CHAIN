@@ -34,7 +34,8 @@ describe('searchSlots — query vazia', () => {
 describe('searchSlots — filtragem', () => {
   it('ignora slots não-alocados', () => {
     const results = searchSlots([...slots, emptySlot], 'coke')
-    expect(results.every(r => r.brandCode !== '')).toBe(true)
+    expect(results.every(r => r.slotId !== '6')).toBe(true)
+    expect(results).toHaveLength(2)
   })
   it('encontra por brand_code', () => {
     const results = searchSlots(slots, '6325')
