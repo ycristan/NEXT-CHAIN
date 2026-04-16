@@ -1,4 +1,4 @@
-import { memo, useCallback, useEffect, useRef, useState } from 'react'
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Plus, Lock, Trash2, AlertTriangle, Printer, List, LayoutGrid, FileText, FileSpreadsheet, Pencil, Copy, GripVertical } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
 import { useAuth } from '@/contexts/AuthContext'
@@ -786,6 +786,19 @@ export function PickingLine() {
     setSearchDropdownIdx(-1)
   }
 
+  function handleSearchSelect(result: SearchResult) {
+    setSearchQuery(result.brandCode)
+    setSearchHighlightSlotId(result.slotId)
+    setSearchDropdownIdx(-1)
+    setTimeout(() => {
+      const el = document.querySelector<HTMLElement>(`[data-slot-id="${result.slotId}"]`)
+      if (el) {
+        el.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'center' })
+        lastFocusedSlotId.current = result.slotId
+      }
+    }, 50)
+  }
+
   function selectType(id: string) {
     _store.activeTypeId = id
     setActiveTypeId(id)
@@ -819,10 +832,16 @@ export function PickingLine() {
     ? racks.filter(r => r.rack_type?.id === activeTypeId)
     : racks
 
-  const searchableSlots = visibleRacks.flatMap(r =>
-    (allSlots[r.id] ?? []).map(s => ({ ...s, rack_name: r.name }))
+  const searchableSlots = useMemo(() =>
+    visibleRacks.flatMap(r =>
+      (allSlots[r.id] ?? []).map(s => ({ ...s, rack_name: r.name }))
+    ),
+    [visibleRacks, allSlots]
   )
-  const searchResults      = searchSlots(searchableSlots, searchQuery)
+  const searchResults = useMemo(() =>
+    searchSlots(searchableSlots, searchQuery),
+    [searchableSlots, searchQuery]
+  )
   const searchDropdownOpen = searchQuery.trim().length > 0
 
   const existingNames = racks.map(r => r.name)
@@ -913,7 +932,14 @@ export function PickingLine() {
                     fontFamily: "'IBM Plex Sans', system-ui, sans-serif",
                   }}
                   onFocus={e => (e.target.style.borderColor = '#2563eb')}
-                  onBlur={e => (e.target.style.borderColor = '#e4e4e7')}
+                  onBlur={e => {
+                    e.target.style.borderColor = '#e4e4e7'
+                    setTimeout(() => {
+                      if (document.activeElement !== searchInputRef.current) {
+                        setSearchDropdownIdx(-1)
+                      }
+                    }, 150)
+                  }}
                 />
                 {searchQuery && (
                   <button
