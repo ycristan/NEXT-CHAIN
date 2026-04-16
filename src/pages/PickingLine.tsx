@@ -70,6 +70,8 @@ interface Slot {
 interface SlotCellProps {
   slot: Slot | undefined
   isFlashed: boolean
+  isSearchActive: boolean
+  isHighlighted: boolean
   isAdmin: boolean
   tabIndex: number
   rackIdx: number
@@ -89,8 +91,10 @@ const DIR_ARROW: Record<string, string> = { above: '↑', below: '↓', left: '�
 const DIR_LABEL: Record<string, string> = { above: 'USE ABOVE', below: 'USE BELOW', left: 'USE LEFT', right: 'USE RIGHT' }
 
 const SlotCell = memo(
-  function SlotCell({ slot, isFlashed, isAdmin, tabIndex, rackIdx, colIdx, rowIdx, cellW,
-    onSlotClick, onContextMenu, onSpaceKey, onEnterKey, onSlotFocus, onHoverEnter, onHoverLeave }: SlotCellProps) {
+  function SlotCell({ slot, isFlashed, isSearchActive, isHighlighted, isAdmin,
+    tabIndex, rackIdx, colIdx, rowIdx, cellW,
+    onSlotClick, onContextMenu, onSpaceKey, onEnterKey, onSlotFocus,
+    onHoverEnter, onHoverLeave }: SlotCellProps) {
     const brand       = slot?.brand ?? null
     const isAllocated = !!brand
     const lightOn     = slot?.light_status === 'on' || slot?.light_status === 'blink'
@@ -137,10 +141,16 @@ const SlotCell = memo(
         }}
         style={{
           position: 'relative',
-          border: isExpansion
+          border: isHighlighted
+            ? '2px solid #2563eb'
+            : isExpansion
             ? '2px dashed #a78bfa'
             : `1px solid ${isAllocated ? '#86efac' : '#e4e4e7'}`,
-          background: isExpansion ? '#faf5ff' : isAllocated ? '#f0fdf4' : '#fafafa',
+          background: isHighlighted
+            ? '#eff6ff'
+            : isExpansion ? '#faf5ff' : isAllocated ? '#f0fdf4' : '#fafafa',
+          boxShadow: isHighlighted ? '0 0 0 3px rgba(37,99,235,0.2)' : undefined,
+          opacity: isSearchActive && !isHighlighted ? 0.3 : 1,
           borderRadius: 3,
           minHeight: 0,
           overflow: 'hidden',
@@ -237,8 +247,10 @@ const SlotCell = memo(
   },
   // Custom comparator — only data properties + position; callbacks intentionally ignored
   (prev, next) =>
-    prev.isFlashed    === next.isFlashed    &&
-    prev.isAdmin      === next.isAdmin      &&
+    prev.isFlashed       === next.isFlashed       &&
+    prev.isSearchActive  === next.isSearchActive  &&
+    prev.isHighlighted   === next.isHighlighted   &&
+    prev.isAdmin         === next.isAdmin         &&
     prev.tabIndex     === next.tabIndex     &&
     prev.rackIdx      === next.rackIdx      &&
     prev.colIdx       === next.colIdx       &&
@@ -1194,6 +1206,8 @@ export function PickingLine() {
                               key={`${letter}-${row}`}
                               slot={slot}
                               isFlashed={slot ? flashedSlots.has(slot.id) : false}
+                              isSearchActive={false}
+                              isHighlighted={false}
                               isAdmin={isAdmin}
                               tabIndex={slotTabIndex}
                               rackIdx={idx}
