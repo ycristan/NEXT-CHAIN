@@ -3,6 +3,7 @@ import { Upload, Trash2 } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
 import { useToast } from '@/contexts/ToastContext'
 import type { BrandFull } from './INVDetailPanel'
+import { shouldResetSubcategory } from '@/lib/categoryValidation'
 
 interface Category {
   id: string
@@ -77,7 +78,7 @@ export function INVBrandForm({ brand, existingCodes, onClose, onSaved }: Props) 
   const subCategories = categories.filter(c => c.parent_id === form.category_id)
 
   useEffect(() => {
-    if (form.category1_id && !subCategories.find(c => c.id === form.category1_id)) {
+    if (shouldResetSubcategory(form.category1_id, form.category_id, categories)) {
       setForm(f => ({ ...f, category1_id: '' }))
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps

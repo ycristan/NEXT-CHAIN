@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { AlertTriangle } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
 import { useToast } from '@/contexts/ToastContext'
+import { PLCategoryAccordion } from './PLCategoryAccordion'
 
 interface RackType { id: string; name: string }
 interface Category { id: string; name: string; parent_id: string | null }
@@ -57,10 +58,6 @@ export function PLRackEditModal({ rack, onClose, onSaved }: Props) {
     setCategories(catRes.data ?? [])
     setSelectedCats((racRes.data ?? []).map((r: { category_id: string }) => r.category_id))
     setLoadingRefs(false)
-  }
-
-  function toggleCat(id: string) {
-    setSelectedCats(prev => prev.includes(id) ? prev.filter(c => c !== id) : [...prev, id])
   }
 
   function validate(): boolean {
@@ -119,9 +116,6 @@ export function PLRackEditModal({ rack, onClose, onSaved }: Props) {
     addToast(`Rack ${rack.name} updated.`, 'success')
     onSaved()
   }
-
-  const parents  = categories.filter(c => !c.parent_id)
-  const children = (pid: string) => categories.filter(c => c.parent_id === pid)
 
   return (
     <div style={{ position: 'fixed', inset: 0, zIndex: 50, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'rgba(0,0,0,0.45)', padding: 24 }}>
@@ -219,42 +213,12 @@ export function PLRackEditModal({ rack, onClose, onSaved }: Props) {
               </div>
 
               {/* Allowed Categories */}
-              <div style={{ marginBottom: 16 }}>
-                <label style={labelStyle}>
-                  Allowed Item Categories
-                  {selectedCats.length > 0 && (
-                    <span style={{ marginLeft: 6, background: '#2563eb', color: '#fff', fontSize: 9, fontWeight: 700, padding: '1px 6px', borderRadius: 99 }}>
-                      {selectedCats.length}
-                    </span>
-                  )}
-                </label>
-                <div style={{ border: '1px solid #e4e4e7', background: '#fafafa', maxHeight: 180, overflowY: 'auto', padding: '4px 0' }}>
-                  {categories.length === 0 ? (
-                    <div style={{ padding: '12px', fontSize: 12, color: '#a1a1aa' }}>No categories available</div>
-                  ) : parents.map(parent => (
-                    <div key={parent.id}>
-                      <label style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '6px 12px', cursor: 'pointer', background: '#f4f4f5' }}
-                        onMouseEnter={e => (e.currentTarget.style.background = '#eff6ff')}
-                        onMouseLeave={e => (e.currentTarget.style.background = '#f4f4f5')}
-                      >
-                        <input type="checkbox" checked={selectedCats.includes(parent.id)} onChange={() => toggleCat(parent.id)} style={{ cursor: 'pointer' }} />
-                        <span style={{ fontSize: 12, fontWeight: 600, color: '#09090b' }}>{parent.name}</span>
-                      </label>
-                      {children(parent.id).map(child => (
-                        <label key={child.id} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '5px 12px 5px 28px', cursor: 'pointer' }}
-                          onMouseEnter={e => (e.currentTarget.style.background = '#f4f4f5')}
-                          onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}
-                        >
-                          <input type="checkbox" checked={selectedCats.includes(child.id)} onChange={() => toggleCat(child.id)} style={{ cursor: 'pointer' }} />
-                          <span style={{ fontSize: 12, color: '#52525b' }}>
-                            <span style={{ color: '#d4d4d8', marginRight: 6 }}>└</span>{child.name}
-                          </span>
-                        </label>
-                      ))}
-                    </div>
-                  ))}
-                </div>
-              </div>
+              <PLCategoryAccordion
+                categories={categories}
+                selected={selectedCats}
+                onChange={setSelectedCats}
+                disabled={saving}
+              />
 
               {/* Category warning */}
               <div style={{ display: 'flex', gap: 8, alignItems: 'flex-start', padding: '8px 10px', background: '#fff7ed', border: '1px solid #fed7aa' }}>

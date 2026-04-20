@@ -159,7 +159,7 @@ export function INVFilterCombo({ label, options, selected, onChange, inHeader, s
 
           <div style={{ display: 'flex', padding: '6px 10px', gap: 10, borderBottom: '1px solid #f4f4f5' }}>
             <button
-              onClick={() => onChange(options.map(o => o.value))}
+              onClick={() => onChange(filtered.map(o => o.value))}
               style={{ fontSize: 11, color: '#2563eb', background: 'none', border: 'none', cursor: 'pointer', fontWeight: 600, padding: 0 }}
             >
               Select All

@@ -2,6 +2,8 @@ import { useEffect, useState } from 'react'
 import { AlertTriangle } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
 import { useToast } from '@/contexts/ToastContext'
+import { PLCategoryAccordion } from './PLCategoryAccordion'
+import { validateRackForm } from '@/lib/rackValidation'
 
 interface RackType {
   id: string
@@ -30,8 +32,6 @@ const labelStyle: React.CSSProperties = {
   display: 'block', fontSize: 10, fontWeight: 700, color: '#71717a',
   textTransform: 'uppercase', letterSpacing: '0.1em', marginBottom: 5,
 }
-
-const fieldStyle: React.CSSProperties = { marginBottom: 16 }
 
 export function PLRackForm({ existingNames, onClose, onSaved }: Props) {
   const { addToast } = useToast()
@@ -62,33 +62,8 @@ export function PLRackForm({ existingNames, onClose, onSaved }: Props) {
     setCategories(catRes.data ?? [])
   }
 
-  function toggleCat(id: string) {
-    setSelectedCats(prev =>
-      prev.includes(id) ? prev.filter(c => c !== id) : [...prev, id]
-    )
-  }
-
   function validate(): boolean {
-    const e: Record<string, string> = {}
-
-    const n = name.trim()
-    if (!n) { e.name = 'Required.' }
-    else if (!/^\d{1,2}$/.test(n)) { e.name = 'Must be 1-2 digits (e.g. 1, 40, 99).' }
-    else if (existingNames.includes(n)) { e.name = `Rack "${n}" already exists.` }
-
-    const c = parseInt(columns)
-    if (!columns || isNaN(c) || c < 1) e.columns = 'Must be ≥ 1.'
-    else if (c > 26) e.columns = 'Max 26 columns (A–Z).'
-
-    const r = parseInt(rows)
-    if (!rows || isNaN(r) || r < 1) e.rows = 'Must be ≥ 1.'
-    else if (r > 99) e.rows = 'Max 99 rows.'
-
-    if (soloPos && (isNaN(parseInt(soloPos)) || parseInt(soloPos) < 1))
-      e.soloPos = 'Must be a positive number.'
-    if (comboPos && (isNaN(parseInt(comboPos)) || parseInt(comboPos) < 1))
-      e.comboPos = 'Must be a positive number.'
-
+    const e = validateRackForm({ name, rackTypeId, columns, rows, soloPos, comboPos, existingNames })
     setErrors(e)
     return Object.keys(e).length === 0
   }
@@ -169,8 +144,6 @@ export function PLRackForm({ existingNames, onClose, onSaved }: Props) {
     onSaved()
   }
 
-  const parents = categories.filter(c => !c.parent_id)
-  const children = (parentId: string) => categories.filter(c => c.parent_id === parentId)
   const totalSlots = (parseInt(columns) || 0) * (parseInt(rows) || 0)
 
   return (
@@ -204,16 +177,17 @@ export function PLRackForm({ existingNames, onClose, onSaved }: Props) {
               {errors.name && <p style={{ fontSize: 11, color: '#dc2626', marginTop: 4 }}>{errors.name}</p>}
             </div>
             <div>
-              <label style={labelStyle}>Rack Type</label>
+              <label style={labelStyle}>Rack Type *</label>
               <select
                 value={rackTypeId}
-                onChange={e => setRackTypeId(e.target.value)}
+                onChange={e => { setRackTypeId(e.target.value); setErrors(v => ({ ...v, rackTypeId: '' })) }}
                 disabled={saving}
-                style={{ ...inputStyle, cursor: 'pointer' }}
+                style={{ ...inputStyle, cursor: 'pointer', borderColor: errors.rackTypeId ? '#dc2626' : '#e4e4e7' }}
               >
-                <option value="">— No type —</option>
+                <option value="">— Select type —</option>
                 {rackTypes.map(rt => <option key={rt.id} value={rt.id}>{rt.name}</option>)}
               </select>
+              {errors.rackTypeId && <p style={{ fontSize: 11, color: '#dc2626', marginTop: 4 }}>{errors.rackTypeId}</p>}
             </div>
           </div>
 
@@ -296,55 +270,12 @@ export function PLRackForm({ existingNames, onClose, onSaved }: Props) {
           </div>
 
           {/* Allowed Categories */}
-          <div style={fieldStyle}>
-            <label style={labelStyle}>
-              Allowed Item Categories
-              {selectedCats.length > 0 && (
-                <span style={{ marginLeft: 6, background: '#2563eb', color: '#fff', fontSize: 9, fontWeight: 700, padding: '1px 6px', borderRadius: 99 }}>
-                  {selectedCats.length}
-                </span>
-              )}
-            </label>
-            <div style={{ border: '1px solid #e4e4e7', background: '#fafafa', maxHeight: 180, overflowY: 'auto', padding: '4px 0' }}>
-              {categories.length === 0 ? (
-                <div style={{ padding: '12px 12px', fontSize: 12, color: '#a1a1aa' }}>No categories available</div>
-              ) : parents.map(parent => (
-                <div key={parent.id}>
-                  {/* Parent category row */}
-                  <label style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '6px 12px', cursor: 'pointer', background: '#f4f4f5' }}
-                    onMouseEnter={e => (e.currentTarget.style.background = '#eff6ff')}
-                    onMouseLeave={e => (e.currentTarget.style.background = '#f4f4f5')}
-                  >
-                    <input
-                      type="checkbox"
-                      checked={selectedCats.includes(parent.id)}
-                      onChange={() => toggleCat(parent.id)}
-                      style={{ cursor: 'pointer' }}
-                    />
-                    <span style={{ fontSize: 12, fontWeight: 600, color: '#09090b' }}>{parent.name}</span>
-                  </label>
-                  {/* Child categories */}
-                  {children(parent.id).map(child => (
-                    <label key={child.id} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '5px 12px 5px 28px', cursor: 'pointer' }}
-                      onMouseEnter={e => (e.currentTarget.style.background = '#f4f4f5')}
-                      onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}
-                    >
-                      <input
-                        type="checkbox"
-                        checked={selectedCats.includes(child.id)}
-                        onChange={() => toggleCat(child.id)}
-                        style={{ cursor: 'pointer' }}
-                      />
-                      <span style={{ fontSize: 12, color: '#52525b' }}>
-                        <span style={{ color: '#d4d4d8', marginRight: 6 }}>└</span>
-                        {child.name}
-                      </span>
-                    </label>
-                  ))}
-                </div>
-              ))}
-            </div>
-          </div>
+          <PLCategoryAccordion
+            categories={categories}
+            selected={selectedCats}
+            onChange={setSelectedCats}
+            disabled={saving}
+          />
 
           {/* Warning about slot generation */}
           {totalSlots > 0 && (
