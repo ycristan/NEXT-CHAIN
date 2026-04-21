@@ -144,7 +144,7 @@ export function INVBrandForm({ brand, existingCodes, onClose, onSaved }: Props) 
     const path = `${Date.now()}-${Math.random().toString(36).slice(2)}.${ext}`
     setUploading(u => u.map((v, i) => i === slot ? true : v))
 
-    const { error: upErr } = await supabase.storage.from('items_images').upload(path, file)
+    const { error: upErr } = await supabase.storage.from('brands').upload(path, file)
     if (upErr) {
       setUploading(u => u.map((v, i) => i === slot ? false : v))
       addToast(`Upload error: ${upErr.message}`, 'error')
@@ -152,7 +152,7 @@ export function INVBrandForm({ brand, existingCodes, onClose, onSaved }: Props) 
       return
     }
 
-    const { data } = supabase.storage.from('items_images').getPublicUrl(path)
+    const { data } = supabase.storage.from('brands').getPublicUrl(path)
     setImages(imgs => imgs.map((v, i) => i === slot ? data.publicUrl : v))
     setUploading(u => u.map((v, i) => i === slot ? false : v))
   }
@@ -161,7 +161,7 @@ export function INVBrandForm({ brand, existingCodes, onClose, onSaved }: Props) 
     const url = images[slot]
     if (url) {
       const parts = url.split('/object/public/brands/')
-      if (parts[1]) await supabase.storage.from('items_images').remove([parts[1]])
+      if (parts[1]) await supabase.storage.from('brands').remove([parts[1]])
     }
     setImages(imgs => imgs.map((v, i) => i === slot ? null : v))
   }
@@ -196,9 +196,9 @@ export function INVBrandForm({ brand, existingCodes, onClose, onSaved }: Props) 
       image2_url:   images[1],
       image3_url:   images[2],
       // Commercial
-      purchase_price:          commercial.purchase_price          ? parseFloat(commercial.purchase_price)          : null,
-      wholesale_price_outer:   commercial.wholesale_price_outer   ? parseFloat(commercial.wholesale_price_outer)   : null,
-      vending_price:           commercial.vending_price           ? parseFloat(commercial.vending_price)           : null,
+      purchase_price:          commercial.purchase_price          !== '' ? parseFloat(commercial.purchase_price)          : null,
+      wholesale_price_outer:   commercial.wholesale_price_outer   !== '' ? parseFloat(commercial.wholesale_price_outer)   : null,
+      vending_price:           commercial.vending_price           !== '' ? parseFloat(commercial.vending_price)           : null,
       allowed_wholesale:       commercial.allowed_wholesale,
       wholesale_units_allowed: commercial.wholesale_units_allowed,
       allowed_vending:         commercial.allowed_vending,
@@ -208,12 +208,12 @@ export function INVBrandForm({ brand, existingCodes, onClose, onSaved }: Props) 
       is_vegan_friendly:       commercial.is_vegan_friendly,
       hse_suitable:            commercial.hse_suitable,
       // Logistics
-      case_weight:    logistics.case_weight    ? parseFloat(logistics.case_weight)    : null,
-      case_height:    logistics.case_height    ? parseFloat(logistics.case_height)    : null,
-      case_length:    logistics.case_length    ? parseFloat(logistics.case_length)    : null,
-      case_depth:     logistics.case_depth     ? parseFloat(logistics.case_depth)     : null,
-      product_weight: logistics.product_weight ? parseFloat(logistics.product_weight) : null,
-      kcal:           logistics.kcal           ? parseFloat(logistics.kcal)           : null,
+      case_weight:    logistics.case_weight    !== '' ? parseFloat(logistics.case_weight)    : null,
+      case_height:    logistics.case_height    !== '' ? parseFloat(logistics.case_height)    : null,
+      case_length:    logistics.case_length    !== '' ? parseFloat(logistics.case_length)    : null,
+      case_depth:     logistics.case_depth     !== '' ? parseFloat(logistics.case_depth)     : null,
+      product_weight: logistics.product_weight !== '' ? parseFloat(logistics.product_weight) : null,
+      kcal:           logistics.kcal           !== '' ? parseFloat(logistics.kcal)           : null,
     }
 
     let brandId: string | null = brand?.id ?? null
@@ -534,7 +534,16 @@ export function INVBrandForm({ brand, existingCodes, onClose, onSaved }: Props) 
                           type="checkbox"
                           checked={checked}
                           disabled={disabled}
-                          onChange={e => setCommercial(c => ({ ...c, [key]: e.target.checked }))}
+                          onChange={e => {
+                            const newVal = e.target.checked
+                            setCommercial(c => {
+                              const updated = { ...c, [key]: newVal }
+                              if (key === 'allowed_wholesale' && !newVal) {
+                                updated.wholesale_units_allowed = false
+                              }
+                              return updated
+                            })
+                          }}
                           style={{ cursor: disabled ? 'not-allowed' : 'pointer', flexShrink: 0 }}
                         />
                         <span style={{ fontSize: 11, color: checked && !disabled ? '#2563eb' : '#3f3f46', fontWeight: checked && !disabled ? 600 : 400 }}>{label}</span>
