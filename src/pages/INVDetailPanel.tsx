@@ -69,7 +69,6 @@ export function INVDetailPanel({ brand, onEdit, onRefresh, onDelete, onNotifyAdm
   const { profile } = useAuth()
   const { addToast } = useToast()
   const isAdmin = profile?.role?.toLowerCase() === 'admin'
-  console.debug('[INVDetailPanel] profile role received:', profile?.role, '| isAdmin:', isAdmin)
   const [imgIdx, setImgIdx] = useState(0)
   const [notes, setNotes] = useState('')
   const [savingNotes, setSavingNotes] = useState(false)
