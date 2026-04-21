@@ -230,15 +230,20 @@ export function INVBrandForm({ brand, existingCodes, onClose, onSaved }: Props) 
     return activeTab === tab ? TAB_STYLE_ACTIVE : TAB_STYLE_INACTIVE
   }
 
-  // suppress unused variable warnings for logistics/barcode state (used in Task 7)
-  void logistics
-  void setLogistics
-  void localBarcodes
+  function addBarcode() {
+    const val = barcodeInput.trim()
+    if (!val) return
+    if (localBarcodes.includes(val)) {
+      setBarcodeError('Barcode already in this list')
+      return
+    }
+    setLocalBarcodes(bs => [...bs, val])
+    setBarcodeInput('')
+    setBarcodeError('')
+  }
+
+  // suppress unused variable warnings for barcode state
   void originalBarcodes
-  void barcodeInput
-  void setBarcodeInput
-  void barcodeError
-  void setBarcodeError
 
   return (
     <div style={{ position: 'fixed', inset: 0, zIndex: 50, background: 'rgba(0,0,0,0.35)', display: 'flex', alignItems: 'flex-start', justifyContent: 'center', padding: '24px 16px', overflowY: 'auto' }}>
@@ -579,14 +584,132 @@ export function INVBrandForm({ brand, existingCodes, onClose, onSaved }: Props) 
             </>
           )}
 
-          {/* ── LOGISTICS TAB — see Task 7 ───────────────────────────────── */}
+          {/* ── LOGISTICS TAB ────────────────────────────────────────────── */}
           {activeTab === 'logistics' && (
-            <div style={{ color: '#a1a1aa', fontSize: 12, padding: 8 }}>Logistics — Task 7</div>
+            <>
+              {/* Case section */}
+              <div style={{ marginBottom: 20 }}>
+                <label style={labelStyle}>Case Dimensions</label>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr 1fr', gap: 10, marginBottom: 8 }}>
+                  {([
+                    { key: 'case_weight', label: 'Weight (kg)', step: '0.001' },
+                    { key: 'case_height', label: 'Height (cm)', step: '0.01' },
+                    { key: 'case_length', label: 'Length (cm)', step: '0.01' },
+                    { key: 'case_depth',  label: 'Depth (cm)',  step: '0.01' },
+                  ] as { key: keyof typeof logistics; label: string; step: string }[]).map(({ key, label, step }) => (
+                    <div key={key}>
+                      <label style={labelStyle}>{label}</label>
+                      <input
+                        type="number" min="0" step={step}
+                        value={logistics[key]}
+                        onChange={e => setLogistics(l => ({ ...l, [key]: e.target.value }))}
+                        placeholder="0"
+                        style={inputStyle}
+                        onFocus={e => (e.target.style.borderColor = '#2563eb')}
+                        onBlur={e => (e.target.style.borderColor = '#e4e4e7')}
+                      />
+                    </div>
+                  ))}
+                </div>
+                {/* Auto-calculated volume */}
+                {(() => {
+                  const h = parseFloat(logistics.case_height)
+                  const l = parseFloat(logistics.case_length)
+                  const d = parseFloat(logistics.case_depth)
+                  const vol = h > 0 && l > 0 && d > 0 ? (h * l * d).toFixed(0) : null
+                  return vol ? (
+                    <div style={{ padding: '6px 12px', background: '#f9f9f9', border: '1px solid #e4e4e7', borderRadius: 3, fontSize: 11, color: '#71717a' }}>
+                      Volume: <strong style={{ color: '#09090b' }}>{Number(vol).toLocaleString()} cm³</strong>
+                      <span style={{ marginLeft: 8, fontSize: 10, color: '#a1a1aa' }}>auto-calculated H × L × D</span>
+                    </div>
+                  ) : null
+                })()}
+              </div>
+
+              {/* Product (unit) section */}
+              <div>
+                <label style={labelStyle}>Product (unit)</label>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+                  <div>
+                    <label style={labelStyle}>Product Weight (kg)</label>
+                    <input
+                      type="number" min="0" step="0.001"
+                      value={logistics.product_weight}
+                      onChange={e => setLogistics(l => ({ ...l, product_weight: e.target.value }))}
+                      placeholder="0.000"
+                      style={inputStyle}
+                      onFocus={e => (e.target.style.borderColor = '#2563eb')}
+                      onBlur={e => (e.target.style.borderColor = '#e4e4e7')}
+                    />
+                  </div>
+                  <div>
+                    <label style={labelStyle}>kcal (per unit)</label>
+                    <input
+                      type="number" min="0" step="0.01"
+                      value={logistics.kcal}
+                      onChange={e => setLogistics(l => ({ ...l, kcal: e.target.value }))}
+                      placeholder="0"
+                      style={inputStyle}
+                      onFocus={e => (e.target.style.borderColor = '#2563eb')}
+                      onBlur={e => (e.target.style.borderColor = '#e4e4e7')}
+                    />
+                  </div>
+                </div>
+              </div>
+            </>
           )}
 
-          {/* ── BARCODES TAB — see Task 7 ────────────────────────────────── */}
+          {/* ── BARCODES TAB ─────────────────────────────────────────────── */}
           {activeTab === 'barcodes' && (
-            <div style={{ color: '#a1a1aa', fontSize: 12, padding: 8 }}>Barcodes — Task 7</div>
+            <>
+              {/* Add barcode input */}
+              <div style={{ display: 'flex', gap: 8, marginBottom: 12 }}>
+                <input
+                  value={barcodeInput}
+                  onChange={e => { setBarcodeInput(e.target.value); setBarcodeError('') }}
+                  onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); addBarcode() } }}
+                  placeholder="Enter barcode..."
+                  style={{ ...inputStyle, flex: 1, fontFamily: "'IBM Plex Mono', monospace", letterSpacing: '0.04em' }}
+                  onFocus={e => (e.target.style.borderColor = '#2563eb')}
+                  onBlur={e => (e.target.style.borderColor = '#e4e4e7')}
+                />
+                <button
+                  type="button"
+                  onClick={addBarcode}
+                  style={{ padding: '8px 16px', background: '#09090b', border: 'none', color: '#fff', fontSize: 12, fontWeight: 700, cursor: 'pointer', whiteSpace: 'nowrap' }}
+                >
+                  + Add
+                </button>
+              </div>
+              {barcodeError && (
+                <div style={{ marginBottom: 8, fontSize: 11, color: '#dc2626', background: '#fef2f2', border: '1px solid #fecaca', padding: '6px 10px', borderRadius: 3 }}>
+                  {barcodeError}
+                </div>
+              )}
+
+              {/* Barcode list */}
+              {localBarcodes.length === 0 ? (
+                <div style={{ padding: '24px 0', textAlign: 'center', fontSize: 12, color: '#a1a1aa' }}>No barcodes yet</div>
+              ) : (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                  {localBarcodes.map(bc => (
+                    <div key={bc} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '7px 10px', background: '#f9f9f9', border: '1px solid #e4e4e7', borderRadius: 3 }}>
+                      <span style={{ fontFamily: "'IBM Plex Mono', monospace", fontSize: 12, color: '#3f3f46', letterSpacing: '0.04em' }}>{bc}</span>
+                      <button
+                        type="button"
+                        onClick={() => setLocalBarcodes(bs => bs.filter(b => b !== bc))}
+                        style={{ background: 'none', border: 'none', color: '#ef4444', fontSize: 14, cursor: 'pointer', padding: '0 4px', lineHeight: 1 }}
+                      >
+                        ✕
+                      </button>
+                    </div>
+                  ))}
+                  <div style={{ marginTop: 4, fontSize: 10, color: '#a1a1aa', textAlign: 'center' }}>
+                    {localBarcodes.length} barcode{localBarcodes.length !== 1 ? 's' : ''}
+                  </div>
+                </div>
+              )}
+            </>
           )}
 
         </div>
