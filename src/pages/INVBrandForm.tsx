@@ -243,7 +243,16 @@ export function INVBrandForm({ brand, existingCodes, onClose, onSaved }: Props) 
       const toInsert = localBarcodes.filter(b => !originalBarcodes.includes(b))
 
       if (toDelete.length > 0) {
-        await supabase.from('brand_barcodes').delete().eq('brand_id', brandId).in('barcode', toDelete)
+        const { error: delErr } = await supabase
+          .from('brand_barcodes')
+          .delete()
+          .eq('brand_id', brandId)
+          .in('barcode', toDelete)
+        if (delErr) {
+          setSaving(false)
+          addToast('Brand saved but some barcodes failed to remove', 'error')
+          return
+        }
       }
 
       if (toInsert.length > 0) {
