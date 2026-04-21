@@ -18,6 +18,26 @@ export interface BrandFull {
   image2_url: string | null
   image3_url: string | null
   notes: string | null
+  // Commercial
+  purchase_price: number | null
+  wholesale_price_outer: number | null
+  vending_price: number | null
+  allowed_wholesale: boolean
+  wholesale_units_allowed: boolean
+  allowed_vending: boolean
+  is_consumable: boolean
+  is_non_stockable: boolean
+  is_gluten_free: boolean
+  is_vegan_friendly: boolean
+  hse_suitable: boolean
+  // Logistics
+  case_weight: number | null
+  case_height: number | null
+  case_length: number | null
+  case_depth: number | null
+  product_weight: number | null
+  kcal: number | null
+  // Nested lookups
   category: { id: string; name: string } | null
   category1: { id: string; name: string } | null
   sku_type: { id: string; name: string; code: string } | null
