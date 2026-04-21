@@ -64,6 +64,16 @@ ON CONFLICT (key) DO NOTHING;
 
 -- ─── 4. RLS — brand_barcodes ───────────────────────────────────────────────
 
+-- ─── Helper: is_admin_or_manager() ─────────────────────────────────────────
+-- SECURITY DEFINER avoids RLS recursion when checking profiles in policies.
+CREATE OR REPLACE FUNCTION public.is_admin_or_manager()
+RETURNS boolean LANGUAGE sql SECURITY DEFINER STABLE AS $$
+  SELECT EXISTS (
+    SELECT 1 FROM public.profiles
+    WHERE id = auth.uid() AND lower(role) IN ('admin', 'manager')
+  );
+$$;
+
 ALTER TABLE public.brand_barcodes ENABLE ROW LEVEL SECURITY;
 
 DROP POLICY IF EXISTS "brand_barcodes_select" ON public.brand_barcodes;
@@ -75,25 +85,13 @@ DROP POLICY IF EXISTS "brand_barcodes_insert" ON public.brand_barcodes;
 CREATE POLICY "brand_barcodes_insert"
   ON public.brand_barcodes FOR INSERT
   TO authenticated
-  WITH CHECK (
-    EXISTS (
-      SELECT 1 FROM public.profiles
-      WHERE id = auth.uid()
-        AND lower(role) IN ('admin', 'manager')
-    )
-  );
+  WITH CHECK (is_admin_or_manager());
 
 DROP POLICY IF EXISTS "brand_barcodes_delete" ON public.brand_barcodes;
 CREATE POLICY "brand_barcodes_delete"
   ON public.brand_barcodes FOR DELETE
   TO authenticated
-  USING (
-    EXISTS (
-      SELECT 1 FROM public.profiles
-      WHERE id = auth.uid()
-        AND lower(role) IN ('admin', 'manager')
-    )
-  );
+  USING (is_admin_or_manager());
 
 -- ─── 5. RLS — system_settings ──────────────────────────────────────────────
 
