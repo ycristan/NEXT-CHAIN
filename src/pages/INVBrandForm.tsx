@@ -4,6 +4,8 @@ import { supabase } from '@/lib/supabase'
 import { useToast } from '@/contexts/ToastContext'
 import type { BrandFull } from './INVDetailPanel'
 import { shouldResetSubcategory } from '@/lib/categoryValidation'
+import { useSystemSettings } from '@/lib/useSystemSettings'
+import { calcSuggestedPrice, calcUnitPrice, formatPrice } from '@/lib/priceUtils'
 
 interface Category {
   id: string
@@ -74,6 +76,40 @@ export function INVBrandForm({ brand, existingCodes, onClose, onSaved }: Props) 
 
   const [uploading, setUploading] = useState([false, false, false])
 
+  // Tab navigation
+  const [activeTab, setActiveTab] = useState<'basic' | 'commercial' | 'logistics' | 'barcodes'>('basic')
+
+  // Commercial form state
+  const [commercial, setCommercial] = useState({
+    purchase_price:          brand?.purchase_price         != null ? String(brand.purchase_price)         : '',
+    wholesale_price_outer:   brand?.wholesale_price_outer  != null ? String(brand.wholesale_price_outer)  : '',
+    vending_price:           brand?.vending_price          != null ? String(brand.vending_price)           : '',
+    allowed_wholesale:       brand?.allowed_wholesale       ?? false,
+    wholesale_units_allowed: brand?.wholesale_units_allowed ?? false,
+    allowed_vending:         brand?.allowed_vending         ?? false,
+    is_consumable:           brand?.is_consumable           ?? false,
+    is_non_stockable:        brand?.is_non_stockable        ?? false,
+    is_gluten_free:          brand?.is_gluten_free          ?? false,
+    is_vegan_friendly:       brand?.is_vegan_friendly       ?? false,
+    hse_suitable:            brand?.hse_suitable            ?? false,
+  })
+
+  // Logistics form state
+  const [logistics, setLogistics] = useState({
+    case_weight:    brand?.case_weight    != null ? String(brand.case_weight)    : '',
+    case_height:    brand?.case_height    != null ? String(brand.case_height)    : '',
+    case_length:    brand?.case_length    != null ? String(brand.case_length)    : '',
+    case_depth:     brand?.case_depth     != null ? String(brand.case_depth)     : '',
+    product_weight: brand?.product_weight != null ? String(brand.product_weight) : '',
+    kcal:           brand?.kcal           != null ? String(brand.kcal)           : '',
+  })
+
+  // Barcode state
+  const [localBarcodes, setLocalBarcodes]       = useState<string[]>([])
+  const [originalBarcodes, setOriginalBarcodes] = useState<string[]>([])
+  const [barcodeInput, setBarcodeInput]         = useState('')
+  const [barcodeError, setBarcodeError]         = useState('')
+
   const topCategories = categories.filter(c => !c.parent_id)
   const subCategories = categories.filter(c => c.parent_id === form.category_id)
 
@@ -83,6 +119,25 @@ export function INVBrandForm({ brand, existingCodes, onClose, onSaved }: Props) 
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [form.category_id])
+
+  useEffect(() => {
+    if (!brand?.id) return
+    supabase
+      .from('brand_barcodes')
+      .select('barcode')
+      .eq('brand_id', brand.id)
+      .order('created_at')
+      .then(({ data }) => {
+        const codes = data?.map(r => r.barcode) ?? []
+        setLocalBarcodes(codes)
+        setOriginalBarcodes(codes)
+      })
+  }, [brand?.id])
+
+  const settings = useSystemSettings()
+  const sym = settings?.currencySymbol ?? '€'
+  const wMargins = settings?.wholesaleMargins ?? [35, 40, 45]
+  const vMargins = settings?.vendingMargins   ?? [50, 60, 65]
 
   async function uploadImage(slot: number, file: File) {
     const ext = file.name.split('.').pop() ?? 'jpg'
@@ -154,9 +209,40 @@ export function INVBrandForm({ brand, existingCodes, onClose, onSaved }: Props) 
     onSaved()
   }
 
+  // Computed derived values for display
+  const purchaseNum  = parseFloat(commercial.purchase_price)  || null
+  const wholesaleNum = parseFloat(commercial.wholesale_price_outer) || null
+  const bpuNum       = parseInt(form.bpu) || 0
+
+  const unitPurchase  = calcUnitPrice(purchaseNum, bpuNum)
+  const unitWholesale = calcUnitPrice(wholesaleNum, bpuNum)
+
+  const TAB_STYLE_ACTIVE: React.CSSProperties = {
+    padding: '9px 16px', fontSize: 11, fontWeight: 700, background: 'none',
+    border: 'none', borderBottom: '3px solid #09090b', marginBottom: -2,
+    color: '#09090b', cursor: 'pointer', letterSpacing: '.06em', textTransform: 'uppercase',
+  }
+  const TAB_STYLE_INACTIVE: React.CSSProperties = {
+    ...TAB_STYLE_ACTIVE, borderBottom: '3px solid transparent', color: '#a1a1aa',
+  }
+
+  function tabStyle(tab: typeof activeTab) {
+    return activeTab === tab ? TAB_STYLE_ACTIVE : TAB_STYLE_INACTIVE
+  }
+
+  // suppress unused variable warnings for logistics/barcode state (used in Task 7)
+  void logistics
+  void setLogistics
+  void localBarcodes
+  void originalBarcodes
+  void barcodeInput
+  void setBarcodeInput
+  void barcodeError
+  void setBarcodeError
+
   return (
     <div style={{ position: 'fixed', inset: 0, zIndex: 50, background: 'rgba(0,0,0,0.35)', display: 'flex', alignItems: 'flex-start', justifyContent: 'center', padding: '24px 16px', overflowY: 'auto' }}>
-      <div style={{ width: '100%', maxWidth: 560, background: '#fff', border: '1px solid #e4e4e7', marginTop: 16 }}>
+      <div style={{ width: '100%', maxWidth: 580, background: '#fff', border: '1px solid #e4e4e7', marginTop: 16 }}>
 
         {/* Modal header */}
         <div style={{ padding: '18px 24px', borderBottom: '1px solid #e4e4e7', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
@@ -164,168 +250,345 @@ export function INVBrandForm({ brand, existingCodes, onClose, onSaved }: Props) 
           <button onClick={onClose} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#a1a1aa', fontSize: 20, lineHeight: 1 }}>×</button>
         </div>
 
+        {/* Tab bar */}
+        <div style={{ display: 'flex', borderBottom: '2px solid #e4e4e7', paddingLeft: 24 }}>
+          {(['basic', 'commercial', 'logistics', 'barcodes'] as const).map(t => (
+            <button key={t} onClick={() => setActiveTab(t)} style={tabStyle(t)}>
+              {t === 'basic' ? 'Basic Info' : t.charAt(0).toUpperCase() + t.slice(1)}
+            </button>
+          ))}
+        </div>
+
         <div style={{ padding: 24 }}>
 
-          {/* Active toggle */}
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '10px 14px', background: '#fafafa', border: '1px solid #e4e4e7', marginBottom: 20 }}>
-            <span style={{ fontSize: 12, fontWeight: 600, color: '#52525b' }}>Active Brand</span>
-            <button
-              onClick={() => setForm(f => ({ ...f, is_active: !f.is_active }))}
-              style={{ width: 40, height: 22, borderRadius: 11, background: form.is_active ? '#2563eb' : '#d4d4d8', border: 'none', cursor: 'pointer', position: 'relative', transition: 'background 0.15s' }}
-            >
-              <div style={{ position: 'absolute', top: 3, left: form.is_active ? 21 : 3, width: 16, height: 16, borderRadius: '50%', background: '#fff', transition: 'left 0.15s' }} />
-            </button>
-          </div>
-
-          {/* Brand Code + Brand Name */}
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14, marginBottom: 14 }}>
-            <div>
-              <label style={labelStyle}>Brand Code *</label>
-              <input
-                list="inv-brand-codes"
-                value={form.brand_code}
-                onChange={e => setForm(f => ({ ...f, brand_code: e.target.value.toUpperCase() }))}
-                placeholder="e.g. COCA"
-                style={{ ...inputStyle, fontFamily: "'IBM Plex Mono', monospace", letterSpacing: '0.05em' }}
-                onFocus={e => (e.target.style.borderColor = '#2563eb')}
-                onBlur={e => (e.target.style.borderColor = '#e4e4e7')}
-              />
-              <datalist id="inv-brand-codes">
-                {existingCodes.map(c => <option key={c} value={c} />)}
-              </datalist>
-            </div>
-            <div>
-              <label style={labelStyle}>Brand Name *</label>
-              <input
-                value={form.brand_name}
-                onChange={e => setForm(f => ({ ...f, brand_name: e.target.value }))}
-                placeholder="e.g. Coca-Cola"
-                style={inputStyle}
-                onFocus={e => (e.target.style.borderColor = '#2563eb')}
-                onBlur={e => (e.target.style.borderColor = '#e4e4e7')}
-              />
-            </div>
-          </div>
-
-          {/* Category + Subcategory */}
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14, marginBottom: 14 }}>
-            <div>
-              <label style={labelStyle}>Category *</label>
-              <select
-                value={form.category_id}
-                onChange={e => setForm(f => ({ ...f, category_id: e.target.value, category1_id: '' }))}
-                style={{ ...inputStyle, cursor: 'pointer' }}
-              >
-                <option value="">Select...</option>
-                {topCategories.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
-              </select>
-            </div>
-            <div>
-              <label style={labelStyle}>Subcategory *</label>
-              <select
-                value={form.category1_id}
-                onChange={e => setForm(f => ({ ...f, category1_id: e.target.value }))}
-                disabled={!form.category_id}
-                style={{ ...inputStyle, cursor: form.category_id ? 'pointer' : 'default', opacity: !form.category_id ? 0.5 : 1 }}
-              >
-                <option value="">Select...</option>
-                {subCategories.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
-              </select>
-            </div>
-          </div>
-
-          {/* SKU Type */}
-          <div style={{ marginBottom: 14 }}>
-            <label style={labelStyle}>SKU Type *</label>
-            <select
-              value={form.sku_type_id}
-              onChange={e => setForm(f => ({ ...f, sku_type_id: e.target.value }))}
-              style={{ ...inputStyle, cursor: 'pointer' }}
-            >
-              <option value="">Select SKU type...</option>
-              {skuTypes.map(s => <option key={s.id} value={s.id}>{s.name} ({s.code})</option>)}
-            </select>
-          </div>
-
-          {/* BPU + Pallet Size */}
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14, marginBottom: 14 }}>
-            <div>
-              <label style={labelStyle}>BPU (Units / Box) *</label>
-              <input
-                type="number" min="1"
-                value={form.bpu}
-                onChange={e => setForm(f => ({ ...f, bpu: e.target.value }))}
-                placeholder="e.g. 12"
-                style={inputStyle}
-                onFocus={e => (e.target.style.borderColor = '#2563eb')}
-                onBlur={e => (e.target.style.borderColor = '#e4e4e7')}
-              />
-            </div>
-            <div>
-              <label style={labelStyle}>Pallet Size</label>
-              <input
-                type="number" min="1"
-                value={form.pallet_size}
-                onChange={e => setForm(f => ({ ...f, pallet_size: e.target.value }))}
-                placeholder="e.g. 48"
-                style={inputStyle}
-                onFocus={e => (e.target.style.borderColor = '#2563eb')}
-                onBlur={e => (e.target.style.borderColor = '#e4e4e7')}
-              />
-            </div>
-          </div>
-
-          {/* Notes */}
-          <div style={{ marginBottom: 20 }}>
-            <label style={labelStyle}>Notes</label>
-            <textarea
-              value={form.notes}
-              onChange={e => setForm(f => ({ ...f, notes: e.target.value }))}
-              rows={2}
-              placeholder="Optional notes..."
-              style={{ ...inputStyle, resize: 'none' }}
-              onFocus={e => (e.target.style.borderColor = '#2563eb')}
-              onBlur={e => (e.target.style.borderColor = '#e4e4e7')}
-            />
-          </div>
-
-          {/* Images */}
-          <div>
-            <label style={labelStyle}>Images (up to 3)</label>
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 10 }}>
-              {([0, 1, 2] as const).map(slot => (
-                <div
-                  key={slot}
-                  style={{ border: '1px solid #e4e4e7', background: '#fafafa', aspectRatio: '1', display: 'flex', alignItems: 'center', justifyContent: 'center', position: 'relative', overflow: 'hidden' }}
+          {/* ── BASIC INFO TAB ──────────────────────────────────────────────── */}
+          {activeTab === 'basic' && (
+            <>
+              {/* Active toggle */}
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '10px 14px', background: '#fafafa', border: '1px solid #e4e4e7', marginBottom: 20 }}>
+                <span style={{ fontSize: 12, fontWeight: 600, color: '#52525b' }}>Active Brand</span>
+                <button
+                  onClick={() => setForm(f => ({ ...f, is_active: !f.is_active }))}
+                  style={{ width: 40, height: 22, borderRadius: 11, background: form.is_active ? '#2563eb' : '#d4d4d8', border: 'none', cursor: 'pointer', position: 'relative', transition: 'background 0.15s' }}
                 >
-                  {images[slot] ? (
-                    <>
-                      <img src={images[slot]!} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
-                      <button
-                        onClick={() => removeImage(slot)}
-                        style={{ position: 'absolute', top: 4, right: 4, background: 'rgba(220,38,38,0.85)', border: 'none', cursor: 'pointer', color: '#fff', padding: '3px', display: 'flex' }}
-                      >
-                        <Trash2 size={12} />
-                      </button>
-                    </>
-                  ) : uploading[slot] ? (
-                    <span style={{ fontSize: 11, color: '#a1a1aa' }}>Uploading...</span>
-                  ) : (
-                    <label style={{ cursor: 'pointer', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4, color: '#a1a1aa' }}>
-                      <Upload size={18} />
-                      <span style={{ fontSize: 10, fontWeight: 600 }}>Upload</span>
-                      <input
-                        type="file"
-                        accept="image/*"
-                        style={{ display: 'none' }}
-                        onChange={e => { const f = e.target.files?.[0]; if (f) void uploadImage(slot, f) }}
-                      />
-                    </label>
-                  )}
+                  <div style={{ position: 'absolute', top: 3, left: form.is_active ? 21 : 3, width: 16, height: 16, borderRadius: '50%', background: '#fff', transition: 'left 0.15s' }} />
+                </button>
+              </div>
+
+              {/* Brand Code + Brand Name */}
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14, marginBottom: 14 }}>
+                <div>
+                  <label style={labelStyle}>Brand Code *</label>
+                  <input
+                    list="inv-brand-codes"
+                    value={form.brand_code}
+                    onChange={e => setForm(f => ({ ...f, brand_code: e.target.value.toUpperCase() }))}
+                    placeholder="e.g. COCA"
+                    style={{ ...inputStyle, fontFamily: "'IBM Plex Mono', monospace", letterSpacing: '0.05em' }}
+                    onFocus={e => (e.target.style.borderColor = '#2563eb')}
+                    onBlur={e => (e.target.style.borderColor = '#e4e4e7')}
+                  />
+                  <datalist id="inv-brand-codes">
+                    {existingCodes.map(c => <option key={c} value={c} />)}
+                  </datalist>
                 </div>
-              ))}
-            </div>
-          </div>
+                <div>
+                  <label style={labelStyle}>Brand Name *</label>
+                  <input
+                    value={form.brand_name}
+                    onChange={e => setForm(f => ({ ...f, brand_name: e.target.value }))}
+                    placeholder="e.g. Coca-Cola"
+                    style={inputStyle}
+                    onFocus={e => (e.target.style.borderColor = '#2563eb')}
+                    onBlur={e => (e.target.style.borderColor = '#e4e4e7')}
+                  />
+                </div>
+              </div>
+
+              {/* Category + Subcategory */}
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14, marginBottom: 14 }}>
+                <div>
+                  <label style={labelStyle}>Category *</label>
+                  <select
+                    value={form.category_id}
+                    onChange={e => setForm(f => ({ ...f, category_id: e.target.value, category1_id: '' }))}
+                    style={{ ...inputStyle, cursor: 'pointer' }}
+                  >
+                    <option value="">Select...</option>
+                    {topCategories.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+                  </select>
+                </div>
+                <div>
+                  <label style={labelStyle}>Subcategory *</label>
+                  <select
+                    value={form.category1_id}
+                    onChange={e => setForm(f => ({ ...f, category1_id: e.target.value }))}
+                    disabled={!form.category_id}
+                    style={{ ...inputStyle, cursor: form.category_id ? 'pointer' : 'default', opacity: !form.category_id ? 0.5 : 1 }}
+                  >
+                    <option value="">Select...</option>
+                    {subCategories.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+                  </select>
+                </div>
+              </div>
+
+              {/* SKU Type */}
+              <div style={{ marginBottom: 14 }}>
+                <label style={labelStyle}>SKU Type *</label>
+                <select
+                  value={form.sku_type_id}
+                  onChange={e => setForm(f => ({ ...f, sku_type_id: e.target.value }))}
+                  style={{ ...inputStyle, cursor: 'pointer' }}
+                >
+                  <option value="">Select SKU type...</option>
+                  {skuTypes.map(s => <option key={s.id} value={s.id}>{s.name} ({s.code})</option>)}
+                </select>
+              </div>
+
+              {/* BPU + Pallet Size */}
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14, marginBottom: 14 }}>
+                <div>
+                  <label style={labelStyle}>BPU (Units / Box) *</label>
+                  <input
+                    type="number" min="1"
+                    value={form.bpu}
+                    onChange={e => setForm(f => ({ ...f, bpu: e.target.value }))}
+                    placeholder="e.g. 12"
+                    style={inputStyle}
+                    onFocus={e => (e.target.style.borderColor = '#2563eb')}
+                    onBlur={e => (e.target.style.borderColor = '#e4e4e7')}
+                  />
+                </div>
+                <div>
+                  <label style={labelStyle}>Pallet Size</label>
+                  <input
+                    type="number" min="1"
+                    value={form.pallet_size}
+                    onChange={e => setForm(f => ({ ...f, pallet_size: e.target.value }))}
+                    placeholder="e.g. 48"
+                    style={inputStyle}
+                    onFocus={e => (e.target.style.borderColor = '#2563eb')}
+                    onBlur={e => (e.target.style.borderColor = '#e4e4e7')}
+                  />
+                </div>
+              </div>
+
+              {/* Notes */}
+              <div style={{ marginBottom: 20 }}>
+                <label style={labelStyle}>Notes</label>
+                <textarea
+                  value={form.notes}
+                  onChange={e => setForm(f => ({ ...f, notes: e.target.value }))}
+                  rows={2}
+                  placeholder="Optional notes..."
+                  style={{ ...inputStyle, resize: 'none' }}
+                  onFocus={e => (e.target.style.borderColor = '#2563eb')}
+                  onBlur={e => (e.target.style.borderColor = '#e4e4e7')}
+                />
+              </div>
+
+              {/* Images */}
+              <div>
+                <label style={labelStyle}>Images (up to 3)</label>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 10 }}>
+                  {([0, 1, 2] as const).map(slot => (
+                    <div
+                      key={slot}
+                      style={{ border: '1px solid #e4e4e7', background: '#fafafa', aspectRatio: '1', display: 'flex', alignItems: 'center', justifyContent: 'center', position: 'relative', overflow: 'hidden' }}
+                    >
+                      {images[slot] ? (
+                        <>
+                          <img src={images[slot]!} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                          <button
+                            onClick={() => removeImage(slot)}
+                            style={{ position: 'absolute', top: 4, right: 4, background: 'rgba(220,38,38,0.85)', border: 'none', cursor: 'pointer', color: '#fff', padding: '3px', display: 'flex' }}
+                          >
+                            <Trash2 size={12} />
+                          </button>
+                        </>
+                      ) : uploading[slot] ? (
+                        <span style={{ fontSize: 11, color: '#a1a1aa' }}>Uploading...</span>
+                      ) : (
+                        <label style={{ cursor: 'pointer', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4, color: '#a1a1aa' }}>
+                          <Upload size={18} />
+                          <span style={{ fontSize: 10, fontWeight: 600 }}>Upload</span>
+                          <input
+                            type="file"
+                            accept="image/*"
+                            style={{ display: 'none' }}
+                            onChange={e => { const f = e.target.files?.[0]; if (f) void uploadImage(slot, f) }}
+                          />
+                        </label>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </>
+          )}
+
+          {/* ── COMMERCIAL TAB ──────────────────────────────────────────────── */}
+          {activeTab === 'commercial' && (
+            <>
+              {/* Flags */}
+              <div style={{ marginBottom: 20 }}>
+                <label style={labelStyle}>Product Flags</label>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 6 }}>
+                  {([
+                    { key: 'allowed_wholesale',       label: 'Allowed Wholesale' },
+                    { key: 'wholesale_units_allowed',  label: 'Loose Units Allowed', indent: true, disabledWhen: !commercial.allowed_wholesale },
+                    { key: 'allowed_vending',          label: 'Allowed Vending' },
+                    { key: 'is_consumable',            label: 'Consumable (Internal)' },
+                    { key: 'is_non_stockable',         label: 'Non-Stockable' },
+                    { key: 'is_gluten_free',           label: 'Gluten Free' },
+                    { key: 'is_vegan_friendly',        label: 'Vegan Friendly' },
+                    { key: 'hse_suitable',             label: 'HSE Suitable' },
+                  ] as { key: keyof typeof commercial; label: string; indent?: boolean; disabledWhen?: boolean }[]).map(({ key, label, indent, disabledWhen }) => {
+                    const checked = commercial[key] as boolean
+                    const disabled = disabledWhen === true
+                    return (
+                      <label
+                        key={key}
+                        style={{
+                          display: 'flex', alignItems: 'center', gap: 8,
+                          padding: '7px 10px',
+                          background: disabled ? '#f9f9f9' : (checked ? '#eff6ff' : '#f9f9f9'),
+                          border: `1px solid ${checked && !disabled ? '#bfdbfe' : '#e4e4e7'}`,
+                          borderRadius: 3,
+                          opacity: disabled ? 0.45 : 1,
+                          cursor: disabled ? 'not-allowed' : 'pointer',
+                          marginLeft: indent ? 8 : 0,
+                        }}
+                      >
+                        <input
+                          type="checkbox"
+                          checked={checked}
+                          disabled={disabled}
+                          onChange={e => setCommercial(c => ({ ...c, [key]: e.target.checked }))}
+                          style={{ cursor: disabled ? 'not-allowed' : 'pointer', flexShrink: 0 }}
+                        />
+                        <span style={{ fontSize: 11, color: checked && !disabled ? '#2563eb' : '#3f3f46', fontWeight: checked && !disabled ? 600 : 400 }}>{label}</span>
+                      </label>
+                    )
+                  })}
+                </div>
+              </div>
+
+              {/* Pricing */}
+              <div>
+                <label style={labelStyle}>Pricing</label>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+
+                  {/* Purchase Price */}
+                  <div style={{ background: '#f9f9f9', border: '1px solid #e4e4e7', borderRadius: 4, padding: '10px 12px' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                      <span style={{ fontSize: 11, color: '#3f3f46', fontWeight: 600, width: 170, flexShrink: 0 }}>Purchase Price (SKU)</span>
+                      <span style={{ fontSize: 12, color: '#71717a', fontWeight: 600 }}>{sym}</span>
+                      <input
+                        type="number" min="0" step="0.01"
+                        value={commercial.purchase_price}
+                        onChange={e => setCommercial(c => ({ ...c, purchase_price: e.target.value }))}
+                        placeholder="0.00"
+                        style={{ ...inputStyle, flex: 1 }}
+                        onFocus={e => (e.target.style.borderColor = '#2563eb')}
+                        onBlur={e => (e.target.style.borderColor = '#e4e4e7')}
+                      />
+                    </div>
+                    {unitPurchase !== null && (
+                      <div style={{ marginTop: 4, fontSize: 10, color: '#a1a1aa', paddingLeft: 178 }}>
+                        Unit cost: {formatPrice(unitPurchase, sym)} ÷ BPU
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Wholesale Price */}
+                  <div style={{ background: '#f9f9f9', border: '1px solid #e4e4e7', borderRadius: 4, padding: '10px 12px' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                      <span style={{ fontSize: 11, color: '#3f3f46', fontWeight: 600, width: 170, flexShrink: 0 }}>Wholesale Price (outer)</span>
+                      <span style={{ fontSize: 12, color: '#71717a', fontWeight: 600 }}>{sym}</span>
+                      <input
+                        type="number" min="0" step="0.01"
+                        value={commercial.wholesale_price_outer}
+                        onChange={e => setCommercial(c => ({ ...c, wholesale_price_outer: e.target.value }))}
+                        placeholder="0.00"
+                        style={{ ...inputStyle, flex: 1 }}
+                        onFocus={e => (e.target.style.borderColor = '#2563eb')}
+                        onBlur={e => (e.target.style.borderColor = '#e4e4e7')}
+                      />
+                    </div>
+                    <div style={{ marginTop: 6, display: 'flex', alignItems: 'center', gap: 6, paddingLeft: 178 }}>
+                      <span style={{ fontSize: 10, color: '#a1a1aa' }}>Suggest:</span>
+                      {wMargins.map(m => (
+                        <button
+                          key={m}
+                          type="button"
+                          disabled={!purchaseNum}
+                          onClick={() => {
+                            if (!purchaseNum) return
+                            const suggested = calcSuggestedPrice(purchaseNum, m)
+                            if (suggested !== null) setCommercial(c => ({ ...c, wholesale_price_outer: String(suggested) }))
+                          }}
+                          style={{ fontSize: 10, fontWeight: 700, color: '#2563eb', background: '#eff6ff', border: '1px solid #bfdbfe', padding: '2px 8px', borderRadius: 3, cursor: purchaseNum ? 'pointer' : 'not-allowed', opacity: purchaseNum ? 1 : 0.4 }}
+                        >
+                          {m}%
+                        </button>
+                      ))}
+                      {unitWholesale !== null && (
+                        <span style={{ fontSize: 10, color: '#a1a1aa', marginLeft: 4 }}>Unit: {formatPrice(unitWholesale, sym)}</span>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Vending Price */}
+                  <div style={{ background: '#f9f9f9', border: '1px solid #e4e4e7', borderRadius: 4, padding: '10px 12px' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                      <span style={{ fontSize: 11, color: '#3f3f46', fontWeight: 600, width: 170, flexShrink: 0 }}>Vending Price (unit)</span>
+                      <span style={{ fontSize: 12, color: '#71717a', fontWeight: 600 }}>{sym}</span>
+                      <input
+                        type="number" min="0" step="0.01"
+                        value={commercial.vending_price}
+                        onChange={e => setCommercial(c => ({ ...c, vending_price: e.target.value }))}
+                        placeholder="0.00"
+                        style={{ ...inputStyle, flex: 1 }}
+                        onFocus={e => (e.target.style.borderColor = '#2563eb')}
+                        onBlur={e => (e.target.style.borderColor = '#e4e4e7')}
+                      />
+                    </div>
+                    <div style={{ marginTop: 6, display: 'flex', alignItems: 'center', gap: 6, paddingLeft: 178 }}>
+                      <span style={{ fontSize: 10, color: '#a1a1aa' }}>Suggest:</span>
+                      {vMargins.map(m => (
+                        <button
+                          key={m}
+                          type="button"
+                          disabled={!unitPurchase}
+                          onClick={() => {
+                            if (!unitPurchase) return
+                            const suggested = calcSuggestedPrice(unitPurchase, m)
+                            if (suggested !== null) setCommercial(c => ({ ...c, vending_price: String(suggested) }))
+                          }}
+                          style={{ fontSize: 10, fontWeight: 700, color: '#7c3aed', background: '#f5f3ff', border: '1px solid #ddd6fe', padding: '2px 8px', borderRadius: 3, cursor: unitPurchase ? 'pointer' : 'not-allowed', opacity: unitPurchase ? 1 : 0.4 }}
+                        >
+                          {m}%
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                </div>
+              </div>
+            </>
+          )}
+
+          {/* ── LOGISTICS TAB — see Task 7 ───────────────────────────────── */}
+          {activeTab === 'logistics' && (
+            <div style={{ color: '#a1a1aa', fontSize: 12, padding: 8 }}>Logistics — Task 7</div>
+          )}
+
+          {/* ── BARCODES TAB — see Task 7 ────────────────────────────────── */}
+          {activeTab === 'barcodes' && (
+            <div style={{ color: '#a1a1aa', fontSize: 12, padding: 8 }}>Barcodes — Task 7</div>
+          )}
+
         </div>
 
         {/* Footer */}
