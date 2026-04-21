@@ -181,30 +181,89 @@ export function INVBrandForm({ brand, existingCodes, onClose, onSaved }: Props) 
     if (dupCode) { addToast('Brand code already exists', 'error'); return }
 
     setSaving(true)
+
     const payload = {
       brand_code,
       brand_name,
-      is_active: form.is_active,
-      category_id: form.category_id,
+      is_active:    form.is_active,
+      category_id:  form.category_id,
       category1_id: form.category1_id,
-      sku_type_id: form.sku_type_id,
-      bpu: parseInt(form.bpu),
-      pallet_size: form.pallet_size ? parseInt(form.pallet_size) : null,
-      notes: form.notes.trim() || null,
-      image1_url: images[0],
-      image2_url: images[1],
-      image3_url: images[2],
+      sku_type_id:  form.sku_type_id,
+      bpu:          parseInt(form.bpu),
+      pallet_size:  form.pallet_size ? parseInt(form.pallet_size) : null,
+      notes:        form.notes.trim() || null,
+      image1_url:   images[0],
+      image2_url:   images[1],
+      image3_url:   images[2],
+      // Commercial
+      purchase_price:          commercial.purchase_price          ? parseFloat(commercial.purchase_price)          : null,
+      wholesale_price_outer:   commercial.wholesale_price_outer   ? parseFloat(commercial.wholesale_price_outer)   : null,
+      vending_price:           commercial.vending_price           ? parseFloat(commercial.vending_price)           : null,
+      allowed_wholesale:       commercial.allowed_wholesale,
+      wholesale_units_allowed: commercial.wholesale_units_allowed,
+      allowed_vending:         commercial.allowed_vending,
+      is_consumable:           commercial.is_consumable,
+      is_non_stockable:        commercial.is_non_stockable,
+      is_gluten_free:          commercial.is_gluten_free,
+      is_vegan_friendly:       commercial.is_vegan_friendly,
+      hse_suitable:            commercial.hse_suitable,
+      // Logistics
+      case_weight:    logistics.case_weight    ? parseFloat(logistics.case_weight)    : null,
+      case_height:    logistics.case_height    ? parseFloat(logistics.case_height)    : null,
+      case_length:    logistics.case_length    ? parseFloat(logistics.case_length)    : null,
+      case_depth:     logistics.case_depth     ? parseFloat(logistics.case_depth)     : null,
+      product_weight: logistics.product_weight ? parseFloat(logistics.product_weight) : null,
+      kcal:           logistics.kcal           ? parseFloat(logistics.kcal)           : null,
     }
 
-    let error
+    let brandId: string | null = brand?.id ?? null
+    let error: { message: string } | null = null
+
     if (brand) {
       ;({ error } = await supabase.from('brands').update(payload).eq('id', brand.id))
     } else {
-      ;({ error } = await supabase.from('brands').insert(payload))
+      const { data, error: insertError } = await supabase
+        .from('brands')
+        .insert(payload)
+        .select('id')
+        .single()
+      error = insertError
+      brandId = data?.id ?? null
+    }
+
+    if (error) {
+      setSaving(false)
+      addToast('Error saving brand', 'error')
+      return
+    }
+
+    // Persist barcodes
+    if (brandId) {
+      const toDelete = originalBarcodes.filter(b => !localBarcodes.includes(b))
+      const toInsert = localBarcodes.filter(b => !originalBarcodes.includes(b))
+
+      if (toDelete.length > 0) {
+        await supabase.from('brand_barcodes').delete().eq('brand_id', brandId).in('barcode', toDelete)
+      }
+
+      if (toInsert.length > 0) {
+        const { error: bcErr } = await supabase
+          .from('brand_barcodes')
+          .insert(toInsert.map(barcode => ({ brand_id: brandId!, barcode })))
+        if (bcErr) {
+          setSaving(false)
+          // ERRCODE 23505 = unique_violation (barcode already belongs to another brand)
+          if (bcErr.code === '23505') {
+            addToast('One or more barcodes already exist on another brand', 'error')
+          } else {
+            addToast('Brand saved but some barcodes failed to save', 'error')
+          }
+          return
+        }
+      }
     }
 
     setSaving(false)
-    if (error) { addToast('Error saving brand', 'error'); return }
     addToast(brand ? 'Brand updated' : 'Brand created', 'success')
     onSaved()
   }
@@ -241,9 +300,6 @@ export function INVBrandForm({ brand, existingCodes, onClose, onSaved }: Props) 
     setBarcodeInput('')
     setBarcodeError('')
   }
-
-  // suppress unused variable warnings for barcode state
-  void originalBarcodes
 
   return (
     <div style={{ position: 'fixed', inset: 0, zIndex: 50, background: 'rgba(0,0,0,0.35)', display: 'flex', alignItems: 'flex-start', justifyContent: 'center', padding: '24px 16px', overflowY: 'auto' }}>
