@@ -2,8 +2,10 @@
  * Calculates a suggested selling price from a cost using the sales margin formula.
  * Sales margin: margin% = (price - cost) / price × 100
  * Therefore: price = cost / (1 - margin / 100)
+ * Returns null for invalid margin values (must be between 0 and 100, exclusive of 100).
  */
-export function calcSuggestedPrice(cost: number, marginPct: number): number {
+export function calcSuggestedPrice(cost: number, marginPct: number): number | null {
+  if (marginPct >= 100 || marginPct < 0) return null
   return parseFloat((cost / (1 - marginPct / 100)).toFixed(2))
 }
 

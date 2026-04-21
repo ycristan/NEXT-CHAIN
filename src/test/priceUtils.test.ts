@@ -18,6 +18,18 @@ describe('calcSuggestedPrice — sales margin formula: cost / (1 - margin%)', ()
     const result = calcSuggestedPrice(24, 35)
     expect(result).toBe(36.92)
   })
+
+  it('returns null for 100% margin (division by zero)', () => {
+    expect(calcSuggestedPrice(24, 100)).toBeNull()
+  })
+
+  it('returns null for margin > 100', () => {
+    expect(calcSuggestedPrice(24, 120)).toBeNull()
+  })
+
+  it('returns null for negative margin', () => {
+    expect(calcSuggestedPrice(24, -10)).toBeNull()
+  })
 })
 
 describe('calcUnitPrice', () => {
@@ -31,6 +43,10 @@ describe('calcUnitPrice', () => {
 
   it('returns null when price is null', () => {
     expect(calcUnitPrice(null, 12)).toBeNull()
+  })
+
+  it('returns null for negative BPU', () => {
+    expect(calcUnitPrice(24, -1)).toBeNull()
   })
 })
 
