@@ -3,7 +3,7 @@ import { Plus, Trash2, Search, AlertTriangle, Snowflake } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
 import { useAuth } from '@/contexts/AuthContext'
 import { useToast } from '@/contexts/ToastContext'
-import { PLSlotImagePreview, type HoverBrand } from './PLSlotImagePreview'
+import { PLSlotImagePreview, type HoverBrand, type PreviewHandle } from './PLSlotImagePreview'
 
 // Module-level store — survives tab navigation
 const _store: { search: string } = { search: '' }
@@ -56,40 +56,30 @@ export function Fridge() {
   const [flashedItems, setFlashedItems]     = useState<Set<string>>(new Set())
 
   // ── Hover preview ──────────────────────────────────────────────
-  const [hoverBrand, setHoverBrand]     = useState<HoverBrand | null>(null)
-  const [hoverImage, setHoverImage]     = useState<string | null>(null)
-  const [hoverLoading, setHoverLoading] = useState(false)
-  const imageCacheRef   = useRef<Map<string, string | null>>(new Map())
-  const hoverBrandIdRef = useRef<string | null>(null)
+  const previewRef    = useRef<PreviewHandle>(null)
+  const imageCacheRef = useRef<Map<string, string | null>>(new Map())
 
   function handleMouseEnter(item: FridgeItem) {
-    if (!item.image1_url && !imageCacheRef.current.has(item.brand_id)) {
-      // No image, set idle immediately
-      hoverBrandIdRef.current = item.brand_id
-      setHoverBrand({ id: item.brand_id, brand_code: item.brand_code, brand_name: item.brand_name })
-      setHoverImage(null)
+    const brand: HoverBrand = { id: item.brand_id, brand_code: item.brand_code, brand_name: item.brand_name }
+
+    if (!item.image1_url) {
+      previewRef.current?.show(brand, null, false)
       return
     }
 
-    hoverBrandIdRef.current = item.brand_id
-    setHoverBrand({ id: item.brand_id, brand_code: item.brand_code, brand_name: item.brand_name })
-
     if (imageCacheRef.current.has(item.brand_id)) {
-      setHoverImage(imageCacheRef.current.get(item.brand_id)!)
+      previewRef.current?.show(brand, imageCacheRef.current.get(item.brand_id)!, false)
       return
     }
 
     // image1_url already on the item — use it directly, no extra fetch needed
-    const url = item.image1_url ?? null
+    const url = item.image1_url
     imageCacheRef.current.set(item.brand_id, url)
-    setHoverImage(url)
+    previewRef.current?.show(brand, url, false)
   }
 
   function handleMouseLeave() {
-    hoverBrandIdRef.current = null
-    setHoverBrand(null)
-    setHoverImage(null)
-    setHoverLoading(false)
+    previewRef.current?.hide()
   }
 
   // ── Data loading ───────────────────────────────────────────────
@@ -202,12 +192,12 @@ export function Fridge() {
 
     const mapped: AvailableBrand[] = (brands ?? [])
       .filter((b: { id: string }) => !inFridgeIds.has(b.id))
-      .map((b: { id: string; brand_code: string; brand_name: string; category1_id: string | null; category1: { name: string } | null }) => ({
-        id: b.id,
-        brand_code: b.brand_code,
-        brand_name: b.brand_name,
-        category1_id: b.category1_id,
-        category1_name: b.category1?.name ?? null,
+      .map(b => ({
+        id: b.id as string,
+        brand_code: b.brand_code as string,
+        brand_name: b.brand_name as string,
+        category1_id: b.category1_id as string | null,
+        category1_name: (b.category1 as unknown as { name: string } | null)?.name ?? null,
       }))
 
     setAvailableBrands(mapped)
@@ -317,7 +307,7 @@ export function Fridge() {
         </div>
 
         {/* Hover preview widget */}
-        <PLSlotImagePreview brand={hoverBrand} image={hoverImage} loading={hoverLoading} />
+        <PLSlotImagePreview ref={previewRef} />
       </div>
 
       {/* ── Content ─────────────────────────────────────────────── */}

@@ -3,7 +3,7 @@ import { AlertTriangle } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
 import { useToast } from '@/contexts/ToastContext'
 import { PLCategoryAccordion } from './PLCategoryAccordion'
-import { validateRackForm } from '@/lib/rackValidation'
+import { validateRackForm, type RackFormErrors } from '@/lib/rackValidation'
 
 interface RackType {
   id: string
@@ -47,7 +47,7 @@ export function PLRackForm({ existingNames, onClose, onSaved }: Props) {
   const [soloPos, setSoloPos] = useState('')
   const [comboPos, setComboPos] = useState('')
   const [selectedCats, setSelectedCats] = useState<string[]>([])
-  const [errors, setErrors] = useState<Record<string, string>>({})
+  const [errors, setErrors] = useState<RackFormErrors>({})
 
   useEffect(() => {
     void loadRefs()

@@ -41,7 +41,7 @@ export function Table({ columns, children, empty = 'No records found', loading }
                 <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
               </td>
             </tr>
-          ) : (children as React.ReactElement)?.props?.children?.length === 0 || !children ? (
+          ) : (children as React.ReactElement<{ children?: unknown[] }>)?.props?.children?.length === 0 || !children ? (
             <tr>
               <td colSpan={columns.length} style={{ padding: '48px', textAlign: 'center', color: '#a1a1aa' }}>
                 {empty}

@@ -1,5 +1,5 @@
 import { useRef, useState } from 'react'
-import { Upload, CheckCircle, AlertTriangle, ChevronRight } from 'lucide-react'
+import { Upload, CheckCircle, ChevronRight } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
 import { useToast } from '@/contexts/ToastContext'
 
@@ -189,7 +189,6 @@ export function INVImport({ onClose, onDone }: Props) {
       if (catMap.has(subLower)) continue
       const parentId = catMap.get(parentName.toLowerCase())
       if (!parentId) continue
-      const subName = [...subPairs.entries()].find(([k]) => k === subLower)?.[0]
       // Get actual case-preserved name from original rows
       const originalName = rows.find(r => pick(r, COL.category1).trim().toLowerCase() === subLower)
       const name = pick(originalName ?? {}, COL.category1).trim()

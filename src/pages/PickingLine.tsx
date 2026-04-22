@@ -696,7 +696,7 @@ export function PickingLine() {
     // Categories per rack
     const catMap: Record<string, string[]> = {}
     for (const ac of catRes.data ?? []) {
-      const name = (ac.category as { name: string } | null)?.name
+      const name = (ac.category as unknown as { name: string } | null)?.name
       if (name) catMap[ac.rack_id] = [...(catMap[ac.rack_id] ?? []), name]
     }
 
@@ -704,7 +704,7 @@ export function PickingLine() {
     const slotsGrouped: Record<string, Slot[]> = {}
     for (const s of slotsRes.data ?? []) {
       if (!slotsGrouped[s.rack_id]) slotsGrouped[s.rack_id] = []
-      slotsGrouped[s.rack_id].push(s as Slot)
+      slotsGrouped[s.rack_id].push(s as unknown as Slot)
     }
 
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
