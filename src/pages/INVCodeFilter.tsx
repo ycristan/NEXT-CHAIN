@@ -263,7 +263,7 @@ export function INVCodeFilter({ selected, onChange, codeOptions = [], activeSort
                 />
                 <div style={{ display: 'flex', gap: 10 }}>
                   <button
-                    onClick={() => onChange(codeOptions.map(o => o.value))}
+                    onClick={() => onChange(filteredOptions.map(o => o.value))}
                     style={{ fontSize: 11, color: '#2563eb', background: 'none', border: 'none', cursor: 'pointer', fontWeight: 600, padding: 0 }}
                   >
                     Select All

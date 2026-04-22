@@ -1,4 +1,4 @@
-import { memo, useCallback, useEffect, useRef, useState } from 'react'
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Plus, Lock, Trash2, AlertTriangle, Printer, List, LayoutGrid, FileText, FileSpreadsheet, Pencil, Copy, GripVertical } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
 import { useAuth } from '@/contexts/AuthContext'
@@ -13,6 +13,8 @@ import { getReplanningRackIds, startReplanning, discardReplanning } from '@/lib/
 import { PLReplanningView } from './PLReplanningView'
 import { PLSlotImagePreview, type PreviewHandle } from './PLSlotImagePreview'
 import { PLSlotContextMenu, type ContextMenuTarget } from './PLSlotContextMenu'
+import { searchSlots } from '@/lib/slotSearch'
+import type { SearchResult } from '@/lib/slotSearch'
 
 // Fixed cell dimensions — never compress regardless of rack count
 const CELL_GAP     = 4    // px gap between cells
@@ -70,6 +72,8 @@ interface Slot {
 interface SlotCellProps {
   slot: Slot | undefined
   isFlashed: boolean
+  isSearchActive: boolean
+  isHighlighted: boolean
   isAdmin: boolean
   tabIndex: number
   rackIdx: number
@@ -89,8 +93,10 @@ const DIR_ARROW: Record<string, string> = { above: '↑', below: '↓', left: '�
 const DIR_LABEL: Record<string, string> = { above: 'USE ABOVE', below: 'USE BELOW', left: 'USE LEFT', right: 'USE RIGHT' }
 
 const SlotCell = memo(
-  function SlotCell({ slot, isFlashed, isAdmin, tabIndex, rackIdx, colIdx, rowIdx, cellW,
-    onSlotClick, onContextMenu, onSpaceKey, onEnterKey, onSlotFocus, onHoverEnter, onHoverLeave }: SlotCellProps) {
+  function SlotCell({ slot, isFlashed, isSearchActive, isHighlighted, isAdmin,
+    tabIndex, rackIdx, colIdx, rowIdx, cellW,
+    onSlotClick, onContextMenu, onSpaceKey, onEnterKey, onSlotFocus,
+    onHoverEnter, onHoverLeave }: SlotCellProps) {
     const brand       = slot?.brand ?? null
     const isAllocated = !!brand
     const lightOn     = slot?.light_status === 'on' || slot?.light_status === 'blink'
@@ -137,10 +143,16 @@ const SlotCell = memo(
         }}
         style={{
           position: 'relative',
-          border: isExpansion
+          border: isHighlighted
+            ? '2px solid #2563eb'
+            : isExpansion
             ? '2px dashed #a78bfa'
             : `1px solid ${isAllocated ? '#86efac' : '#e4e4e7'}`,
-          background: isExpansion ? '#faf5ff' : isAllocated ? '#f0fdf4' : '#fafafa',
+          background: isHighlighted
+            ? '#eff6ff'
+            : isExpansion ? '#faf5ff' : isAllocated ? '#f0fdf4' : '#fafafa',
+          boxShadow: isHighlighted ? '0 0 0 3px rgba(37,99,235,0.2)' : undefined,
+          opacity: isSearchActive && !isHighlighted ? 0.3 : 1,
           borderRadius: 3,
           minHeight: 0,
           overflow: 'hidden',
@@ -237,8 +249,10 @@ const SlotCell = memo(
   },
   // Custom comparator — only data properties + position; callbacks intentionally ignored
   (prev, next) =>
-    prev.isFlashed    === next.isFlashed    &&
-    prev.isAdmin      === next.isAdmin      &&
+    prev.isFlashed       === next.isFlashed       &&
+    prev.isSearchActive  === next.isSearchActive  &&
+    prev.isHighlighted   === next.isHighlighted   &&
+    prev.isAdmin         === next.isAdmin         &&
     prev.tabIndex     === next.tabIndex     &&
     prev.rackIdx      === next.rackIdx      &&
     prev.colIdx       === next.colIdx       &&
@@ -331,6 +345,10 @@ export function PickingLine() {
   const [duplicateRack, setDuplicateRack]         = useState<Rack | null>(null)
   const [contextMenu, setContextMenu]             = useState<ContextMenuTarget | null>(null)
   const [flashedSlots, setFlashedSlots]           = useState<Set<string>>(new Set())
+  const [searchQuery,           setSearchQuery]           = useState('')
+  const [searchHighlightSlotId, setSearchHighlightSlotId] = useState<string | null>(null)
+  const [searchDropdownIdx,     setSearchDropdownIdx]     = useState(-1)
+  const searchInputRef = useRef<HTMLInputElement>(null)
 
   // Rack scroll indicator — pill
   const [visibleRackName, setVisibleRackName] = useState<string | null>(null)
@@ -762,10 +780,30 @@ export function PickingLine() {
   }
 
   // ── Helpers ───────────────────────────────────────────────────
+  function clearSearch() {
+    setSearchQuery('')
+    setSearchHighlightSlotId(null)
+    setSearchDropdownIdx(-1)
+  }
+
+  function handleSearchSelect(result: SearchResult) {
+    setSearchQuery(result.brandCode)
+    setSearchHighlightSlotId(result.slotId)
+    setSearchDropdownIdx(-1)
+    setTimeout(() => {
+      const el = document.querySelector<HTMLElement>(`[data-slot-id="${result.slotId}"]`)
+      if (el) {
+        el.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'center' })
+        lastFocusedSlotId.current = result.slotId
+      }
+    }, 50)
+  }
+
   function selectType(id: string) {
     _store.activeTypeId = id
     setActiveTypeId(id)
     setSelectedRackId(null)
+    clearSearch()
   }
 
   function scrollToRack(rackId: string) {
@@ -790,9 +828,22 @@ export function PickingLine() {
   }
 
   // Racks visible in the current tab
-  const visibleRacks = activeTypeId
-    ? racks.filter(r => r.rack_type?.id === activeTypeId)
-    : racks
+  const visibleRacks = useMemo(
+    () => activeTypeId ? racks.filter(r => r.rack_type?.id === activeTypeId) : racks,
+    [racks, activeTypeId]
+  )
+
+  const searchableSlots = useMemo(() =>
+    visibleRacks.flatMap(r =>
+      (allSlots[r.id] ?? []).map(s => ({ ...s, rack_name: r.name }))
+    ),
+    [visibleRacks, allSlots]
+  )
+  const searchResults = useMemo(() =>
+    searchSlots(searchableSlots, searchQuery),
+    [searchableSlots, searchQuery]
+  )
+  const searchDropdownOpen = searchQuery.trim().length > 0
 
   const existingNames = racks.map(r => r.name)
 
@@ -834,19 +885,97 @@ export function PickingLine() {
           </div>
 
           {/* Toolbar */}
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, flex: 1 }}>
             {isAdmin ? (
               <button onClick={() => setShowForm(true)}
-                style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '7px 14px', background: '#09090b', border: 'none', color: '#fff', fontSize: 12, fontWeight: 700, letterSpacing: '0.05em', textTransform: 'uppercase', cursor: 'pointer' }}>
+                style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '7px 14px', background: '#09090b', border: 'none', color: '#fff', fontSize: 12, fontWeight: 700, letterSpacing: '0.05em', textTransform: 'uppercase', cursor: 'pointer', flexShrink: 0 }}>
                 <Plus size={13} /> Add Rack
               </button>
             ) : (
               <button disabled title="Only admins can create racks"
-                style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '7px 14px', background: '#f4f4f5', border: '1px solid #e4e4e7', color: '#a1a1aa', fontSize: 12, fontWeight: 700, letterSpacing: '0.05em', textTransform: 'uppercase', cursor: 'not-allowed' }}>
+                style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '7px 14px', background: '#f4f4f5', border: '1px solid #e4e4e7', color: '#a1a1aa', fontSize: 12, fontWeight: 700, letterSpacing: '0.05em', textTransform: 'uppercase', cursor: 'not-allowed', flexShrink: 0 }}>
                 <Lock size={13} /> Add Rack
               </button>
             )}
-            <span style={{ marginLeft: 'auto', fontSize: 12, color: '#a1a1aa' }}>
+
+            {/* Search input + dropdown */}
+            {!loading && (
+              <div style={{ position: 'relative', flex: 1, maxWidth: 320 }}>
+                <span style={{ position: 'absolute', left: 9, top: '50%', transform: 'translateY(-50%)', fontSize: 13, color: '#a1a1aa', pointerEvents: 'none', zIndex: 1 }}>⌕</span>
+                <input
+                  ref={searchInputRef}
+                  value={searchQuery}
+                  onChange={e => { setSearchQuery(e.target.value); setSearchDropdownIdx(-1); setSearchHighlightSlotId(null) }}
+                  onKeyDown={e => {
+                    if (!searchDropdownOpen) {
+                      if (e.key === 'Escape') clearSearch()
+                      return
+                    }
+                    if (e.key === 'ArrowDown') {
+                      e.preventDefault()
+                      setSearchDropdownIdx(i => Math.min(i + 1, searchResults.length - 1))
+                    } else if (e.key === 'ArrowUp') {
+                      e.preventDefault()
+                      setSearchDropdownIdx(i => Math.max(i - 1, 0))
+                    } else if (e.key === 'Enter' && searchDropdownIdx >= 0) {
+                      e.preventDefault()
+                      handleSearchSelect(searchResults[searchDropdownIdx])
+                    } else if (e.key === 'Escape') {
+                      clearSearch()
+                    }
+                  }}
+                  placeholder="Search brand code or name…"
+                  style={{
+                    width: '100%', boxSizing: 'border-box',
+                    padding: '6px 28px 6px 28px',
+                    border: '1px solid #e4e4e7', background: '#fafafa',
+                    fontSize: 12, color: '#09090b', outline: 'none',
+                    fontFamily: "'IBM Plex Sans', system-ui, sans-serif",
+                  }}
+                  onFocus={e => (e.target.style.borderColor = '#2563eb')}
+                  onBlur={e => {
+                    e.target.style.borderColor = '#e4e4e7'
+                    setTimeout(() => {
+                      if (document.activeElement !== searchInputRef.current) {
+                        setSearchDropdownIdx(-1)
+                      }
+                    }, 150)
+                  }}
+                />
+                {searchQuery && (
+                  <button
+                    onClick={clearSearch}
+                    style={{ position: 'absolute', right: 7, top: '50%', transform: 'translateY(-50%)', background: 'none', border: 'none', cursor: 'pointer', color: '#a1a1aa', fontSize: 14, lineHeight: 1, padding: 2 }}
+                  >×</button>
+                )}
+
+                {/* Dropdown */}
+                {searchDropdownOpen && (
+                  <div style={{ position: 'absolute', top: '100%', left: 0, right: 0, background: '#fff', border: '1px solid #d4d4d8', borderTop: 'none', boxShadow: '0 4px 16px rgba(0,0,0,0.12)', zIndex: 200, maxHeight: 280, overflowY: 'auto' }}>
+                    {searchResults.length === 0 ? (
+                      <div style={{ padding: '10px 12px', fontSize: 11, color: '#a1a1aa' }}>No allocated brands found</div>
+                    ) : searchResults.map((r, i) => (
+                      <div
+                        key={r.slotId}
+                        onMouseDown={e => { e.preventDefault(); handleSearchSelect(r) }}
+                        onMouseEnter={() => setSearchDropdownIdx(i)}
+                        style={{
+                          padding: '7px 12px', cursor: 'pointer', borderBottom: '1px solid #f4f4f5',
+                          display: 'flex', alignItems: 'center', gap: 10,
+                          background: i === searchDropdownIdx ? '#eff6ff' : '#fff',
+                        }}
+                      >
+                        <span style={{ fontFamily: "'IBM Plex Mono', monospace", fontSize: 11, fontWeight: 800, color: '#09090b', minWidth: 42 }}>{r.brandCode}</span>
+                        <span style={{ fontSize: 11, color: '#52525b', flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{r.brandName}</span>
+                        <span style={{ fontFamily: "'IBM Plex Mono', monospace", fontSize: 10, color: '#16a34a', fontWeight: 700, flexShrink: 0 }}>{r.binAddress}</span>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
+
+            <span style={{ marginLeft: 'auto', fontSize: 12, color: '#a1a1aa', flexShrink: 0 }}>
               {visibleRacks.length} rack{visibleRacks.length !== 1 ? 's' : ''}
             </span>
           </div>
@@ -1194,6 +1323,8 @@ export function PickingLine() {
                               key={`${letter}-${row}`}
                               slot={slot}
                               isFlashed={slot ? flashedSlots.has(slot.id) : false}
+                              isSearchActive={searchHighlightSlotId !== null}
+                              isHighlighted={slot ? slot.id === searchHighlightSlotId : false}
                               isAdmin={isAdmin}
                               tabIndex={slotTabIndex}
                               rackIdx={idx}
