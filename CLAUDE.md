@@ -193,6 +193,13 @@ Storage bucket: `brands` (público) — imagens das marcas
 
 Bin address format: `"<rack_name> <col_letter><row_padded_2>"` ex: "40 A01" — gerado por trigger PostgreSQL.
 
+## DIRETRIZ OBRIGATÓRIA: Novos scripts SQL
+
+**Sempre que um novo arquivo SQL for criado em `sql/`, avisar imediatamente o utilizador:**
+> "Este script precisa ser executado manualmente no Supabase SQL Editor (supabase.com → seu projeto → SQL Editor) antes de a feature funcionar."
+
+O Supabase não executa scripts automaticamente. Sem este aviso, a feature falha silenciosamente.
+
 ## Scripts SQL (pasta sql/)
 - `supabase_setup.sql` — setup inicial
 - `supabase_v2_migration.sql` — rack_types, categories, update_updated_at()
