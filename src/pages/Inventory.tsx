@@ -361,8 +361,6 @@ export function Inventory() {
       })
     : filtered
 
-  const isAllocatedView = activeTab === 'active' && activeSubTab === 'allocated'
-
   function setVisibleCols(cols: ColKey[]) {
     _store.visibleCols = cols
     setVisibleColsState(cols)
@@ -370,11 +368,7 @@ export function Inventory() {
 
   const visSet = new Set(visibleCols)
   const vis = (key: ColKey) => visSet.has(key)
-  const colSpan = ALL_COLS.filter(c => {
-    if (!visSet.has(c.key)) return false
-    if (c.key === 'binAddress' && !isAllocatedView) return false
-    return true
-  }).length
+  const colSpan = ALL_COLS.filter(c => visSet.has(c.key)).length
 
   // Virtualizer — only active when there's data to show
   const virtualizer = useVirtualizer({
@@ -574,7 +568,7 @@ export function Inventory() {
                     </th>
                   )}
                   {vis('notes') && <th style={thStyle}>Notes</th>}
-                  {vis('binAddress') && isAllocatedView && (
+                  {vis('binAddress') && (
                     <th style={{ ...thStyle, padding: 0 }}>
                       <INVFilterCombo label="Bin Address" options={binAddressOptions} selected={f.fBinAddress} onChange={v => updateFilter('fBinAddress', v)} inHeader sortKey="binAddress" activeSortKey={f.sortKey} activeSortDir={f.sortDir} onSort={updateSort} />
                     </th>
@@ -610,7 +604,7 @@ export function Inventory() {
                 {virtualItems.map(virtualRow => {
                   const b = displayList[virtualRow.index]
                   const isSelected = b.id === selectedId
-                  const binAddr = isAllocatedView ? (allocMap.get(b.id) ?? []).join(' / ') : null
+
                   return (
                     <tr
                       key={b.id}
@@ -660,9 +654,9 @@ export function Inventory() {
                       {vis('notes') && (
                         <td style={{ ...tdStyle, color: '#71717a', maxWidth: 180, overflow: 'hidden', textOverflow: 'ellipsis' }}>{b.notes ?? '—'}</td>
                       )}
-                      {vis('binAddress') && isAllocatedView && (
+                      {vis('binAddress') && (
                         <td style={{ ...tdStyle, color: '#2563eb', fontFamily: "'IBM Plex Mono', monospace", fontSize: 11 }}>
-                          {binAddr || '—'}
+                          {(allocMap.get(b.id) ?? []).join(' / ') || '—'}
                         </td>
                       )}
                       {vis('purchasePrice') && (
