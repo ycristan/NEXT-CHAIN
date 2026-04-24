@@ -62,7 +62,7 @@ sql/                   # todos os scripts SQL para Supabase
   - Sub-abas dentro de "Active": **Allocated Items** e **Unallocated Items** com badges de contagem
   - `allocMap: Map<string, string[]>` — mapeia `brand_id` → lista de `bin_addresses` (slots + fridge em paralelo)
   - Realtime channel `inv-alloc-realtime` sincroniza `slots` e `fridge_items` para manter `allocMap` atualizado
-  - Coluna **Bin Address** visível apenas na sub-aba Allocated (`isAllocatedView`)
+  - Coluna **Bin Address** visível em qualquer tab/sub-tab quando seleccionada no column picker — usa `allocMap` directamente, mostra `'—'` para marcas não alocadas
   - **Sort A→Z / Z→A** em todos os headers via `sortKey` + `sortDir` no `TabFilters`
   - `displayList` ordenado client-side com `localeCompare({ numeric: true })` para `brand_code`
   - Filtros **context-aware**: opções derivadas de `tabBase` (dataset da aba ativa pré-filtros), nunca do dataset global
