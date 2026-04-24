@@ -77,13 +77,15 @@ export function INVColumnPicker({ visible, onChange, userId, isAdmin }: Props) {
   const [savingName, setSavingName] = useState('')
   const [savingPublic, setSavingPublic] = useState(false)
   const [saving, setSaving] = useState(false)
+  const [saveError, setSaveError] = useState<string | null>(null)
   const ref = useRef<HTMLDivElement>(null)
 
   async function loadViews() {
-    const { data } = await supabase
+    const { data, error } = await supabase
       .from('inventory_column_views')
       .select('*')
       .order('created_at', { ascending: true })
+    if (error) console.error('[INVColumnPicker] loadViews error:', error.message)
     if (data) setViews(data as ColView[])
   }
 
@@ -127,9 +129,15 @@ export function INVColumnPicker({ visible, onChange, userId, isAdmin }: Props) {
     const name = savingName.trim()
     if (!name || saving) return
     setSaving(true)
-    await supabase.from('inventory_column_views').insert({
+    setSaveError(null)
+    const { error } = await supabase.from('inventory_column_views').insert({
       name, cols: visible, is_public: savingPublic, created_by: userId,
     })
+    if (error) {
+      setSaveError(error.message)
+      setSaving(false)
+      return
+    }
     await loadViews()
     setSavingName('')
     setSavingPublic(false)
@@ -259,6 +267,9 @@ export function INVColumnPicker({ visible, onChange, userId, isAdmin }: Props) {
                   placeholder="View name..."
                   style={{ fontSize: 12, padding: '5px 8px', border: '1px solid #e4e4e7', outline: 'none', width: '100%', boxSizing: 'border-box' }}
                 />
+                {saveError && (
+                  <div style={{ fontSize: 11, color: '#dc2626', padding: '2px 0' }}>{saveError}</div>
+                )}
                 <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
                   <label style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 12, cursor: 'pointer', userSelect: 'none' }}>
                     <input type="radio" checked={!savingPublic} onChange={() => setSavingPublic(false)} style={{ accentColor: '#2563eb' }} />
