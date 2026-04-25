@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { Plus, Upload } from 'lucide-react'
 import { useVirtualizer } from '@tanstack/react-virtual'
 import { supabase } from '@/lib/supabase'
@@ -10,6 +10,7 @@ import { INVDeleteConfirm } from './INVDeleteConfirm'
 import { INVNotifyAdmin } from './INVNotifyAdmin'
 import { INVImport } from './INVImport'
 import { INVFixSubcategories } from './INVFixSubcategories'
+import { searchBrands, type BrandSearchResult } from '@/lib/brandSearch'
 
 type SubTab = 'all' | 'active' | 'inactive'
 type ActiveSubTab = 'allocated' | 'unallocated'
@@ -92,16 +93,27 @@ export function Inventory() {
   const [showImport, setShowImport] = useState(false)
   const [showFixSubs, setShowFixSubs] = useState(false)
 
+  const [searchQuery,       setSearchQuery]       = useState('')
+  const [searchHighlightId, setSearchHighlightId] = useState<string | null>(null)
+  const [searchDropdownIdx, setSearchDropdownIdx] = useState(-1)
+  const searchInputRef = useRef<HTMLInputElement>(null)
+
   const scrollRef = useRef<HTMLDivElement>(null)
 
   function setActiveTab(tab: SubTab) {
     _store.activeTab = tab
     setActiveTabState(tab)
+    setSearchQuery('')
+    setSearchHighlightId(null)
+    setSearchDropdownIdx(-1)
   }
 
   function setActiveSubTab(tab: ActiveSubTab) {
     _store.activeSubTab = tab
     setActiveSubTabState(tab)
+    setSearchQuery('')
+    setSearchHighlightId(null)
+    setSearchDropdownIdx(-1)
   }
 
   function updateFilter<K extends keyof TabFilters>(key: K, value: TabFilters[K]) {
@@ -338,6 +350,29 @@ export function Inventory() {
   const isAllocatedView = activeTab === 'active' && activeSubTab === 'allocated'
   const colSpan = isAllocatedView ? 9 : 8
 
+  const searchResults = useMemo(
+    () => searchBrands(displayList, searchQuery, allocMap),
+    [displayList, searchQuery, allocMap]
+  )
+  const searchDropdownOpen = searchQuery.trim().length > 0
+
+  function clearSearch() {
+    setSearchQuery('')
+    setSearchHighlightId(null)
+    setSearchDropdownIdx(-1)
+  }
+
+  function handleSearchSelect(result: BrandSearchResult) {
+    const idx = displayList.findIndex(b => b.id === result.id)
+    if (idx !== -1) {
+      virtualizer.scrollToIndex(idx, { align: 'center' })
+      setSelectedId(result.id)
+      setSearchHighlightId(result.id)
+    }
+    setSearchQuery(result.brandCode)
+    setSearchDropdownIdx(-1)
+  }
+
   // Virtualizer — only active when there's data to show
   const virtualizer = useVirtualizer({
     count: displayList.length,
@@ -467,7 +502,61 @@ export function Inventory() {
           </button>
         )}
 
-        <span style={{ marginLeft: 'auto', fontSize: 12, color: '#a1a1aa' }}>
+        {/* Search bar */}
+        <div style={{ position: 'relative', flex: 1, maxWidth: 300, marginLeft: 8 }}>
+          <span style={{ position: 'absolute', left: 9, top: '50%', transform: 'translateY(-50%)', fontSize: 13, color: '#a1a1aa', pointerEvents: 'none', zIndex: 1 }}>⌕</span>
+          <input
+            ref={searchInputRef}
+            value={searchQuery}
+            onChange={e => { setSearchQuery(e.target.value); setSearchDropdownIdx(-1); setSearchHighlightId(null) }}
+            onKeyDown={e => {
+              if (!searchDropdownOpen) { if (e.key === 'Escape') clearSearch(); return }
+              if (e.key === 'ArrowDown') { e.preventDefault(); setSearchDropdownIdx(i => Math.min(i + 1, searchResults.length - 1)) }
+              else if (e.key === 'ArrowUp') { e.preventDefault(); setSearchDropdownIdx(i => Math.max(i - 1, 0)) }
+              else if (e.key === 'Enter' && searchDropdownIdx >= 0) { e.preventDefault(); handleSearchSelect(searchResults[searchDropdownIdx]) }
+              else if (e.key === 'Escape') clearSearch()
+            }}
+            placeholder="Search code or name…"
+            style={{
+              width: '100%', boxSizing: 'border-box',
+              padding: '6px 28px 6px 28px',
+              border: '1px solid #e4e4e7', background: '#fafafa',
+              fontSize: 12, color: '#09090b', outline: 'none',
+            }}
+            onFocus={e => (e.target.style.borderColor = '#2563eb')}
+            onBlur={e => {
+              e.target.style.borderColor = '#e4e4e7'
+              setTimeout(() => { if (document.activeElement !== searchInputRef.current) setSearchDropdownIdx(-1) }, 150)
+            }}
+          />
+          {searchQuery && (
+            <button onClick={clearSearch} style={{ position: 'absolute', right: 7, top: '50%', transform: 'translateY(-50%)', background: 'none', border: 'none', cursor: 'pointer', color: '#a1a1aa', fontSize: 14, lineHeight: 1, padding: 2 }}>×</button>
+          )}
+          {searchDropdownOpen && (
+            <div style={{ position: 'absolute', top: '100%', left: 0, right: 0, background: '#fff', border: '1px solid #d4d4d8', borderTop: 'none', boxShadow: '0 4px 16px rgba(0,0,0,0.12)', zIndex: 200, maxHeight: 280, overflowY: 'auto' }}>
+              {searchResults.length === 0 ? (
+                <div style={{ padding: '10px 12px', fontSize: 11, color: '#a1a1aa' }}>No results in current tab</div>
+              ) : searchResults.map((r, i) => (
+                <div
+                  key={r.id}
+                  onMouseDown={e => { e.preventDefault(); handleSearchSelect(r) }}
+                  onMouseEnter={() => setSearchDropdownIdx(i)}
+                  style={{
+                    padding: '7px 12px', cursor: 'pointer', borderBottom: '1px solid #f4f4f5',
+                    display: 'flex', alignItems: 'center', gap: 10,
+                    background: i === searchDropdownIdx ? '#eff6ff' : '#fff',
+                  }}
+                >
+                  <span style={{ fontFamily: "'IBM Plex Mono', monospace", fontSize: 11, fontWeight: 800, color: '#09090b', minWidth: 42 }}>{r.brandCode}</span>
+                  <span style={{ fontSize: 11, color: '#52525b', flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{r.brandName}</span>
+                  {r.binAddress && <span style={{ fontFamily: "'IBM Plex Mono', monospace", fontSize: 10, color: '#16a34a', fontWeight: 700, flexShrink: 0 }}>{r.binAddress}</span>}
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+
+        <span style={{ marginLeft: 'auto', fontSize: 12, color: '#a1a1aa', flexShrink: 0 }}>
           {filtered.length} record(s)
         </span>
       </div>
@@ -538,7 +627,12 @@ export function Inventory() {
                       data-index={virtualRow.index}
                       ref={virtualizer.measureElement}
                       onClick={() => setSelectedId(b.id === selectedId ? null : b.id)}
-                      style={{ background: isSelected ? '#eff6ff' : 'transparent', cursor: 'pointer' }}
+                      style={{
+                        background: isSelected ? '#eff6ff' : 'transparent',
+                        cursor: 'pointer',
+                        outline: b.id === searchHighlightId ? '2px solid #2563eb' : 'none',
+                        outlineOffset: '-2px',
+                      }}
                       onMouseEnter={e => { if (!isSelected) e.currentTarget.style.background = '#fafafa' }}
                       onMouseLeave={e => { if (!isSelected) e.currentTarget.style.background = 'transparent' }}
                     >
