@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState, useTransition } from 'react'
 import { Plus, Upload } from 'lucide-react'
 import { useVirtualizer } from '@tanstack/react-virtual'
 import { supabase } from '@/lib/supabase'
@@ -93,16 +93,19 @@ export function Inventory() {
   const [showImport, setShowImport] = useState(false)
   const [showFixSubs, setShowFixSubs] = useState(false)
 
-  const [searchQuery,       setSearchQuery]       = useState('')
+  const [searchInputValue,  setSearchInputValue]  = useState('')   // input display — updates immediately
+  const [searchQuery,       setSearchQuery]       = useState('')   // deferred — triggers re-render
   const [searchHighlightId, setSearchHighlightId] = useState<string | null>(null)
   const [searchDropdownIdx, setSearchDropdownIdx] = useState(-1)
   const searchInputRef = useRef<HTMLInputElement>(null)
+  const [, startSearchTransition] = useTransition()
 
   const scrollRef = useRef<HTMLDivElement>(null)
 
   function setActiveTab(tab: SubTab) {
     _store.activeTab = tab
     setActiveTabState(tab)
+    setSearchInputValue('')
     setSearchQuery('')
     setSearchHighlightId(null)
     setSearchDropdownIdx(-1)
@@ -111,6 +114,7 @@ export function Inventory() {
   function setActiveSubTab(tab: ActiveSubTab) {
     _store.activeSubTab = tab
     setActiveSubTabState(tab)
+    setSearchInputValue('')
     setSearchQuery('')
     setSearchHighlightId(null)
     setSearchDropdownIdx(-1)
@@ -354,9 +358,10 @@ export function Inventory() {
     () => searchBrands(displayList, searchQuery, allocMap),
     [displayList, searchQuery, allocMap]
   )
-  const searchDropdownOpen = searchQuery.trim().length > 0
+  const searchDropdownOpen = searchInputValue.trim().length > 0
 
   function clearSearch() {
+    setSearchInputValue('')
     setSearchQuery('')
     setSearchHighlightId(null)
     setSearchDropdownIdx(-1)
@@ -369,6 +374,7 @@ export function Inventory() {
       setSelectedId(result.id)
       setSearchHighlightId(result.id)
     }
+    setSearchInputValue(result.brandCode)
     setSearchQuery(result.brandCode)
     setSearchDropdownIdx(-1)
   }
@@ -507,8 +513,14 @@ export function Inventory() {
           <span style={{ position: 'absolute', left: 9, top: '50%', transform: 'translateY(-50%)', fontSize: 13, color: '#a1a1aa', pointerEvents: 'none', zIndex: 1 }}>⌕</span>
           <input
             ref={searchInputRef}
-            value={searchQuery}
-            onChange={e => { setSearchQuery(e.target.value); setSearchDropdownIdx(-1); setSearchHighlightId(null) }}
+            value={searchInputValue}
+            onChange={e => {
+              const val = e.target.value
+              setSearchInputValue(val)
+              setSearchDropdownIdx(-1)
+              setSearchHighlightId(null)
+              startSearchTransition(() => { setSearchQuery(val) })
+            }}
             onKeyDown={e => {
               if (!searchDropdownOpen) { if (e.key === 'Escape') clearSearch(); return }
               if (e.key === 'ArrowDown') { e.preventDefault(); setSearchDropdownIdx(i => Math.min(i + 1, searchResults.length - 1)) }
