@@ -98,6 +98,7 @@ export function Inventory() {
   const [searchHighlightId, setSearchHighlightId] = useState<string | null>(null)
   const [searchDropdownIdx, setSearchDropdownIdx] = useState(-1)
   const searchInputRef = useRef<HTMLInputElement>(null)
+  const searchContainerRef = useRef<HTMLDivElement>(null)
   const [, startSearchTransition] = useTransition()
 
   const scrollRef = useRef<HTMLDivElement>(null)
@@ -379,6 +380,17 @@ export function Inventory() {
     setSearchDropdownIdx(-1)
   }
 
+  useEffect(() => {
+    if (!searchDropdownOpen) return
+    function onDown(e: MouseEvent) {
+      if (searchContainerRef.current && !searchContainerRef.current.contains(e.target as Node)) {
+        clearSearch()
+      }
+    }
+    document.addEventListener('mousedown', onDown)
+    return () => document.removeEventListener('mousedown', onDown)
+  }, [searchDropdownOpen])
+
   // Virtualizer — only active when there's data to show
   const virtualizer = useVirtualizer({
     count: displayList.length,
@@ -509,7 +521,7 @@ export function Inventory() {
         )}
 
         {/* Search bar */}
-        <div style={{ position: 'relative', flex: 1, maxWidth: 300, marginLeft: 8 }}>
+        <div ref={searchContainerRef} style={{ position: 'relative', flex: 1, maxWidth: 300, marginLeft: 8 }}>
           <span style={{ position: 'absolute', left: 9, top: '50%', transform: 'translateY(-50%)', fontSize: 13, color: '#a1a1aa', pointerEvents: 'none', zIndex: 1 }}>⌕</span>
           <input
             ref={searchInputRef}
@@ -541,7 +553,7 @@ export function Inventory() {
               setTimeout(() => { if (document.activeElement !== searchInputRef.current) setSearchDropdownIdx(-1) }, 150)
             }}
           />
-          {searchQuery && (
+          {searchInputValue && (
             <button onClick={clearSearch} style={{ position: 'absolute', right: 7, top: '50%', transform: 'translateY(-50%)', background: 'none', border: 'none', cursor: 'pointer', color: '#a1a1aa', fontSize: 14, lineHeight: 1, padding: 2 }}>×</button>
           )}
           {searchDropdownOpen && (
