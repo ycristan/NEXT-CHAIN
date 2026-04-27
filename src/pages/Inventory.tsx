@@ -214,7 +214,6 @@ export function Inventory() {
   }
 
   async function loadBarcodesMap() {
-    const PAGE_SIZE = 1000
     let page = 0
     const map = new Map<string, string[]>()
     while (true) {
