@@ -62,7 +62,7 @@ sql/                   # todos os scripts SQL para Supabase
   - Sub-abas dentro de "Active": **Allocated Items** e **Unallocated Items** com badges de contagem
   - `allocMap: Map<string, string[]>` — mapeia `brand_id` → lista de `bin_addresses` (slots + fridge em paralelo)
   - Realtime channel `inv-alloc-realtime` sincroniza `slots` e `fridge_items` para manter `allocMap` atualizado
-  - Coluna **Bin Address** visível apenas na sub-aba Allocated (`isAllocatedView`)
+  - Coluna **Bin Address** visível em qualquer tab/sub-tab quando seleccionada no column picker — usa `allocMap` directamente, mostra `'—'` para marcas não alocadas
   - **Sort A→Z / Z→A** em todos os headers via `sortKey` + `sortDir` no `TabFilters`
   - `displayList` ordenado client-side com `localeCompare({ numeric: true })` para `brand_code`
   - Filtros **context-aware**: opções derivadas de `tabBase` (dataset da aba ativa pré-filtros), nunca do dataset global
@@ -192,6 +192,13 @@ Views: `fridge_items_view` (JOIN brands + categories)
 Storage bucket: `brands` (público) — imagens das marcas
 
 Bin address format: `"<rack_name> <col_letter><row_padded_2>"` ex: "40 A01" — gerado por trigger PostgreSQL.
+
+## DIRETRIZ OBRIGATÓRIA: Novos scripts SQL
+
+**Sempre que um novo arquivo SQL for criado em `sql/`, avisar imediatamente o utilizador:**
+> "Este script precisa ser executado manualmente no Supabase SQL Editor (supabase.com → seu projeto → SQL Editor) antes de a feature funcionar."
+
+O Supabase não executa scripts automaticamente. Sem este aviso, a feature falha silenciosamente.
 
 ## Scripts SQL (pasta sql/)
 - `supabase_setup.sql` — setup inicial

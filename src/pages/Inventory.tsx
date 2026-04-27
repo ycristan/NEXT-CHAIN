@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { Plus, Upload } from 'lucide-react'
+import { useAuth } from '@/contexts/AuthContext'
 import { useVirtualizer } from '@tanstack/react-virtual'
 import { supabase } from '@/lib/supabase'
 import { INVFilterCombo } from './INVFilterCombo'
@@ -10,6 +11,8 @@ import { INVDeleteConfirm } from './INVDeleteConfirm'
 import { INVNotifyAdmin } from './INVNotifyAdmin'
 import { INVImport } from './INVImport'
 import { INVFixSubcategories } from './INVFixSubcategories'
+import { INVColumnPicker, ALL_COLS, DEFAULT_COLS, type ColKey } from './INVColumnPicker'
+import { useSystemSettings } from '@/lib/useSystemSettings'
 
 type SubTab = 'all' | 'active' | 'inactive'
 type ActiveSubTab = 'allocated' | 'unallocated'
@@ -32,17 +35,19 @@ function emptyFilters(): TabFilters {
   return { fStatus: [], fCode: [], fName: [], fCategory: [], fCategory1: [], fSkuType: [], fBpu: [], fPallet: [], fBinAddress: [], sortKey: null, sortDir: 'asc' }
 }
 
-// Module-level store — persists filter/tab state across module navigation
+// Module-level store — persists filter/tab/column state across module navigation
 const _store: {
   activeTab: SubTab
   tabFilters: Record<SubTab, TabFilters>
   activeSubTab: ActiveSubTab
   subTabFilters: Record<ActiveSubTab, TabFilters>
+  visibleCols: ColKey[]
 } = {
   activeTab: 'all',
   tabFilters: { all: emptyFilters(), active: emptyFilters(), inactive: emptyFilters() },
   activeSubTab: 'unallocated',
   subTabFilters: { allocated: emptyFilters(), unallocated: emptyFilters() },
+  visibleCols: DEFAULT_COLS,
 }
 
 const PAGE_SIZE = 1000
@@ -75,9 +80,17 @@ const tdStyle: React.CSSProperties = {
 const ROW_HEIGHT = 41
 
 export function Inventory() {
+  const { profile, user } = useAuth()
+  const isAdmin = profile?.role?.toLowerCase() === 'admin'
+
+  const settings = useSystemSettings()
+  const sym = settings?.currencySymbol ?? '€'
+
   const [brands, setBrands] = useState<BrandFull[]>([])
   const [loading, setLoading] = useState(true)
   const [allocMap, setAllocMap] = useState<Map<string, string[]>>(new Map())
+  const [barcodesMap, setBarcodesMap] = useState<Map<string, string[]>>(new Map())
+  const [visibleCols, setVisibleColsState] = useState<ColKey[]>(_store.visibleCols)
 
   const [activeTab, setActiveTabState] = useState<SubTab>(_store.activeTab)
   const [tabFilters, setTabFiltersState] = useState<Record<SubTab, TabFilters>>(_store.tabFilters)
@@ -155,6 +168,7 @@ export function Inventory() {
   useEffect(() => {
     void loadAll()
     void loadAllocMap()
+    void loadBarcodesMap()
 
     // Realtime: refresh alloc map on slot or fridge changes (any tab, any user)
     const channel = supabase.channel('inv-alloc-realtime')
@@ -197,6 +211,30 @@ export function Inventory() {
     console.debug(`[Inventory] Total brands loaded from DB: ${allBrands.length}`)
     setBrands(allBrands)
     setLoading(false)
+  }
+
+  async function loadBarcodesMap() {
+    let page = 0
+    const map = new Map<string, string[]>()
+    while (true) {
+      const from = page * PAGE_SIZE
+      const to = from + PAGE_SIZE - 1
+      const { data, error } = await supabase
+        .from('brand_barcodes')
+        .select('brand_id, barcode')
+        .range(from, to)
+      if (error) { console.error('[Inventory] loadBarcodesMap error:', error.message); break }
+      if (!data || data.length === 0) break
+      for (const row of data) {
+        if (!row.brand_id) continue
+        const arr = map.get(row.brand_id) ?? []
+        arr.push(row.barcode)
+        map.set(row.brand_id, arr)
+      }
+      if (data.length < PAGE_SIZE) break
+      page++
+    }
+    setBarcodesMap(map)
   }
 
   async function loadAllocMap() {
@@ -335,8 +373,14 @@ export function Inventory() {
       })
     : filtered
 
-  const isAllocatedView = activeTab === 'active' && activeSubTab === 'allocated'
-  const colSpan = isAllocatedView ? 9 : 8
+  function setVisibleCols(cols: ColKey[]) {
+    _store.visibleCols = cols
+    setVisibleColsState(cols)
+  }
+
+  const visSet = new Set(visibleCols)
+  const vis = (key: ColKey) => visSet.has(key)
+  const colSpan = Math.max(1, ALL_COLS.filter(c => visSet.has(c.key)).length)
 
   // Virtualizer — only active when there's data to show
   const virtualizer = useVirtualizer({
@@ -457,6 +501,12 @@ export function Inventory() {
         >
           Fix Subcategories
         </button>
+        <INVColumnPicker
+          visible={visibleCols}
+          onChange={setVisibleCols}
+          userId={user?.id ?? ''}
+          isAdmin={isAdmin}
+        />
 
         {activeFiltersCount > 0 && (
           <button
@@ -489,35 +539,70 @@ export function Inventory() {
             <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
               <thead>
                 <tr>
-                  <th style={{ ...thStyle, padding: 0 }}>
-                    <INVFilterCombo label="Status" options={statusOptions} selected={f.fStatus} onChange={v => updateFilter('fStatus', v)} inHeader sortKey="status" activeSortKey={f.sortKey} activeSortDir={f.sortDir} onSort={updateSort} />
-                  </th>
-                  <th style={{ ...thStyle, padding: 0 }}>
-                    <INVCodeFilter selected={f.fCode} onChange={v => updateFilter('fCode', v)} codeOptions={codeOptions} activeSortKey={f.sortKey} activeSortDir={f.sortDir} onSort={updateSort} />
-                  </th>
-                  <th style={{ ...thStyle, padding: 0 }}>
-                    <INVFilterCombo label="Brand Name" options={nameOptions} selected={f.fName} onChange={v => updateFilter('fName', v)} inHeader sortKey="name" activeSortKey={f.sortKey} activeSortDir={f.sortDir} onSort={updateSort} />
-                  </th>
-                  <th style={{ ...thStyle, padding: 0 }}>
-                    <INVFilterCombo label="Category" options={catOptions} selected={f.fCategory} onChange={v => updateFilter('fCategory', v)} inHeader sortKey="category" activeSortKey={f.sortKey} activeSortDir={f.sortDir} onSort={updateSort} />
-                  </th>
-                  <th style={{ ...thStyle, padding: 0 }}>
-                    <INVFilterCombo label="Subcategory" options={cat1Options} selected={f.fCategory1} onChange={v => updateFilter('fCategory1', v)} inHeader sortKey="category1" activeSortKey={f.sortKey} activeSortDir={f.sortDir} onSort={updateSort} />
-                  </th>
-                  <th style={{ ...thStyle, padding: 0 }}>
-                    <INVFilterCombo label="SKU Type" options={skuOptions} selected={f.fSkuType} onChange={v => updateFilter('fSkuType', v)} inHeader sortKey="skuType" activeSortKey={f.sortKey} activeSortDir={f.sortDir} onSort={updateSort} />
-                  </th>
-                  <th style={{ ...thStyle, padding: 0 }}>
-                    <INVFilterCombo label="BPU" options={bpuOptions} selected={f.fBpu} onChange={v => updateFilter('fBpu', v)} inHeader sortKey="bpu" activeSortKey={f.sortKey} activeSortDir={f.sortDir} onSort={updateSort} />
-                  </th>
-                  <th style={{ ...thStyle, padding: 0 }}>
-                    <INVFilterCombo label="Pallet" options={palletOptions} selected={f.fPallet} onChange={v => updateFilter('fPallet', v)} inHeader sortKey="pallet" activeSortKey={f.sortKey} activeSortDir={f.sortDir} onSort={updateSort} />
-                  </th>
-                  {isAllocatedView && (
+                  {vis('status') && (
+                    <th style={{ ...thStyle, padding: 0 }}>
+                      <INVFilterCombo label="Status" options={statusOptions} selected={f.fStatus} onChange={v => updateFilter('fStatus', v)} inHeader sortKey="status" activeSortKey={f.sortKey} activeSortDir={f.sortDir} onSort={updateSort} />
+                    </th>
+                  )}
+                  {vis('code') && (
+                    <th style={{ ...thStyle, padding: 0 }}>
+                      <INVCodeFilter selected={f.fCode} onChange={v => updateFilter('fCode', v)} codeOptions={codeOptions} activeSortKey={f.sortKey} activeSortDir={f.sortDir} onSort={updateSort} />
+                    </th>
+                  )}
+                  {vis('name') && (
+                    <th style={{ ...thStyle, padding: 0 }}>
+                      <INVFilterCombo label="Brand Name" options={nameOptions} selected={f.fName} onChange={v => updateFilter('fName', v)} inHeader sortKey="name" activeSortKey={f.sortKey} activeSortDir={f.sortDir} onSort={updateSort} />
+                    </th>
+                  )}
+                  {vis('category') && (
+                    <th style={{ ...thStyle, padding: 0 }}>
+                      <INVFilterCombo label="Category" options={catOptions} selected={f.fCategory} onChange={v => updateFilter('fCategory', v)} inHeader sortKey="category" activeSortKey={f.sortKey} activeSortDir={f.sortDir} onSort={updateSort} />
+                    </th>
+                  )}
+                  {vis('subcategory') && (
+                    <th style={{ ...thStyle, padding: 0 }}>
+                      <INVFilterCombo label="Subcategory" options={cat1Options} selected={f.fCategory1} onChange={v => updateFilter('fCategory1', v)} inHeader sortKey="category1" activeSortKey={f.sortKey} activeSortDir={f.sortDir} onSort={updateSort} />
+                    </th>
+                  )}
+                  {vis('skuType') && (
+                    <th style={{ ...thStyle, padding: 0 }}>
+                      <INVFilterCombo label="SKU Type" options={skuOptions} selected={f.fSkuType} onChange={v => updateFilter('fSkuType', v)} inHeader sortKey="skuType" activeSortKey={f.sortKey} activeSortDir={f.sortDir} onSort={updateSort} />
+                    </th>
+                  )}
+                  {vis('bpu') && (
+                    <th style={{ ...thStyle, padding: 0 }}>
+                      <INVFilterCombo label="BPU" options={bpuOptions} selected={f.fBpu} onChange={v => updateFilter('fBpu', v)} inHeader sortKey="bpu" activeSortKey={f.sortKey} activeSortDir={f.sortDir} onSort={updateSort} />
+                    </th>
+                  )}
+                  {vis('pallet') && (
+                    <th style={{ ...thStyle, padding: 0 }}>
+                      <INVFilterCombo label="Pallet" options={palletOptions} selected={f.fPallet} onChange={v => updateFilter('fPallet', v)} inHeader sortKey="pallet" activeSortKey={f.sortKey} activeSortDir={f.sortDir} onSort={updateSort} />
+                    </th>
+                  )}
+                  {vis('notes') && <th style={thStyle}>Notes</th>}
+                  {vis('binAddress') && (
                     <th style={{ ...thStyle, padding: 0 }}>
                       <INVFilterCombo label="Bin Address" options={binAddressOptions} selected={f.fBinAddress} onChange={v => updateFilter('fBinAddress', v)} inHeader sortKey="binAddress" activeSortKey={f.sortKey} activeSortDir={f.sortDir} onSort={updateSort} />
                     </th>
                   )}
+                  {vis('purchasePrice')    && <th style={{ ...thStyle, textAlign: 'right' }}>Purchase Price</th>}
+                  {vis('wholesalePrice')   && <th style={{ ...thStyle, textAlign: 'right' }}>Wholesale Price</th>}
+                  {vis('vendingPrice')     && <th style={{ ...thStyle, textAlign: 'right' }}>Vending Price</th>}
+                  {vis('allowedWholesale') && <th style={{ ...thStyle, textAlign: 'center' }}>Wholesale</th>}
+                  {vis('wholesaleUnits')   && <th style={{ ...thStyle, textAlign: 'center' }}>Whl. Units</th>}
+                  {vis('allowedVending')   && <th style={{ ...thStyle, textAlign: 'center' }}>Vending</th>}
+                  {vis('isConsumable')     && <th style={{ ...thStyle, textAlign: 'center' }}>Consumable</th>}
+                  {vis('isNonStockable')   && <th style={{ ...thStyle, textAlign: 'center' }}>Non-Stock</th>}
+                  {vis('isGlutenFree')     && <th style={{ ...thStyle, textAlign: 'center' }}>Gluten Free</th>}
+                  {vis('isVegan')          && <th style={{ ...thStyle, textAlign: 'center' }}>Vegan</th>}
+                  {vis('hseSuitable')      && <th style={{ ...thStyle, textAlign: 'center' }}>HSE</th>}
+                  {vis('caseWeight')       && <th style={{ ...thStyle, textAlign: 'right' }}>Case Wt.</th>}
+                  {vis('caseHeight')       && <th style={{ ...thStyle, textAlign: 'right' }}>Case H</th>}
+                  {vis('caseLength')       && <th style={{ ...thStyle, textAlign: 'right' }}>Case L</th>}
+                  {vis('caseDepth')        && <th style={{ ...thStyle, textAlign: 'right' }}>Case D</th>}
+                  {vis('productWeight')    && <th style={{ ...thStyle, textAlign: 'right' }}>Prod. Wt.</th>}
+                  {vis('kcal')             && <th style={{ ...thStyle, textAlign: 'right' }}>Kcal</th>}
+                  {vis('barcodes')         && <th style={thStyle}>Barcodes</th>}
                 </tr>
               </thead>
               <tbody>
@@ -531,7 +616,7 @@ export function Inventory() {
                 {virtualItems.map(virtualRow => {
                   const b = displayList[virtualRow.index]
                   const isSelected = b.id === selectedId
-                  const binAddr = isAllocatedView ? (allocMap.get(b.id) ?? []).join(' / ') : null
+
                   return (
                     <tr
                       key={b.id}
@@ -542,29 +627,122 @@ export function Inventory() {
                       onMouseEnter={e => { if (!isSelected) e.currentTarget.style.background = '#fafafa' }}
                       onMouseLeave={e => { if (!isSelected) e.currentTarget.style.background = 'transparent' }}
                     >
-                      <td style={tdStyle}>
-                        <span style={{
-                          fontSize: 10, fontWeight: 700, padding: '2px 7px',
-                          background: b.is_active ? '#dcfce7' : '#f4f4f5',
-                          color: b.is_active ? '#16a34a' : '#71717a',
-                        }}>
-                          {b.is_active ? 'ACTIVE' : 'INACTIVE'}
-                        </span>
-                      </td>
-                      <td style={tdStyle}>
-                        <span style={{ fontFamily: "'IBM Plex Mono', monospace", fontSize: 12, color: '#52525b', background: '#f4f4f5', padding: '2px 7px', letterSpacing: '0.05em' }}>
-                          {b.brand_code}
-                        </span>
-                      </td>
-                      <td style={{ ...tdStyle, fontWeight: isSelected ? 600 : 500, color: '#09090b' }}>{b.brand_name}</td>
-                      <td style={tdStyle}>{b.category?.name ?? '—'}</td>
-                      <td style={{ ...tdStyle, color: '#71717a' }}>{b.category1?.name ?? '—'}</td>
-                      <td style={tdStyle}>{b.sku_type ? `${b.sku_type.name} (${b.sku_type.code})` : '—'}</td>
-                      <td style={{ ...tdStyle, textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>{b.bpu}</td>
-                      <td style={{ ...tdStyle, textAlign: 'right', color: '#71717a', fontVariantNumeric: 'tabular-nums' }}>{b.pallet_size ?? '—'}</td>
-                      {isAllocatedView && (
+                      {vis('status') && (
+                        <td style={tdStyle}>
+                          <span style={{
+                            fontSize: 10, fontWeight: 700, padding: '2px 7px',
+                            background: b.is_active ? '#dcfce7' : '#f4f4f5',
+                            color: b.is_active ? '#16a34a' : '#71717a',
+                          }}>
+                            {b.is_active ? 'ACTIVE' : 'INACTIVE'}
+                          </span>
+                        </td>
+                      )}
+                      {vis('code') && (
+                        <td style={tdStyle}>
+                          <span style={{ fontFamily: "'IBM Plex Mono', monospace", fontSize: 12, color: '#52525b', background: '#f4f4f5', padding: '2px 7px', letterSpacing: '0.05em' }}>
+                            {b.brand_code}
+                          </span>
+                        </td>
+                      )}
+                      {vis('name') && (
+                        <td style={{ ...tdStyle, fontWeight: isSelected ? 600 : 500, color: '#09090b' }}>{b.brand_name}</td>
+                      )}
+                      {vis('category') && (
+                        <td style={tdStyle}>{b.category?.name ?? '—'}</td>
+                      )}
+                      {vis('subcategory') && (
+                        <td style={{ ...tdStyle, color: '#71717a' }}>{b.category1?.name ?? '—'}</td>
+                      )}
+                      {vis('skuType') && (
+                        <td style={tdStyle}>{b.sku_type ? `${b.sku_type.name} (${b.sku_type.code})` : '—'}</td>
+                      )}
+                      {vis('bpu') && (
+                        <td style={{ ...tdStyle, textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>{b.bpu}</td>
+                      )}
+                      {vis('pallet') && (
+                        <td style={{ ...tdStyle, textAlign: 'right', color: '#71717a', fontVariantNumeric: 'tabular-nums' }}>{b.pallet_size ?? '—'}</td>
+                      )}
+                      {vis('notes') && (
+                        <td style={{ ...tdStyle, color: '#71717a', maxWidth: 180, overflow: 'hidden', textOverflow: 'ellipsis' }}>{b.notes ?? '—'}</td>
+                      )}
+                      {vis('binAddress') && (
                         <td style={{ ...tdStyle, color: '#2563eb', fontFamily: "'IBM Plex Mono', monospace", fontSize: 11 }}>
-                          {binAddr || '—'}
+                          {(allocMap.get(b.id) ?? []).join(' / ') || '—'}
+                        </td>
+                      )}
+                      {vis('purchasePrice') && (
+                        <td style={{ ...tdStyle, textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>
+                          {b.purchase_price != null ? `${sym}${b.purchase_price.toFixed(2)}` : '—'}
+                        </td>
+                      )}
+                      {vis('wholesalePrice') && (
+                        <td style={{ ...tdStyle, textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>
+                          {b.wholesale_price_outer != null ? `${sym}${b.wholesale_price_outer.toFixed(2)}` : '—'}
+                        </td>
+                      )}
+                      {vis('vendingPrice') && (
+                        <td style={{ ...tdStyle, textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>
+                          {b.vending_price != null ? `${sym}${b.vending_price.toFixed(2)}` : '—'}
+                        </td>
+                      )}
+                      {vis('allowedWholesale') && (
+                        <td style={{ ...tdStyle, textAlign: 'center' }}>{b.allowed_wholesale ? '✓' : '—'}</td>
+                      )}
+                      {vis('wholesaleUnits') && (
+                        <td style={{ ...tdStyle, textAlign: 'center' }}>{b.wholesale_units_allowed ? '✓' : '—'}</td>
+                      )}
+                      {vis('allowedVending') && (
+                        <td style={{ ...tdStyle, textAlign: 'center' }}>{b.allowed_vending ? '✓' : '—'}</td>
+                      )}
+                      {vis('isConsumable') && (
+                        <td style={{ ...tdStyle, textAlign: 'center' }}>{b.is_consumable ? '✓' : '—'}</td>
+                      )}
+                      {vis('isNonStockable') && (
+                        <td style={{ ...tdStyle, textAlign: 'center' }}>{b.is_non_stockable ? '✓' : '—'}</td>
+                      )}
+                      {vis('isGlutenFree') && (
+                        <td style={{ ...tdStyle, textAlign: 'center' }}>{b.is_gluten_free ? '✓' : '—'}</td>
+                      )}
+                      {vis('isVegan') && (
+                        <td style={{ ...tdStyle, textAlign: 'center' }}>{b.is_vegan_friendly ? '✓' : '—'}</td>
+                      )}
+                      {vis('hseSuitable') && (
+                        <td style={{ ...tdStyle, textAlign: 'center' }}>{b.hse_suitable ? '✓' : '—'}</td>
+                      )}
+                      {vis('caseWeight') && (
+                        <td style={{ ...tdStyle, textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>
+                          {b.case_weight != null ? `${b.case_weight} kg` : '—'}
+                        </td>
+                      )}
+                      {vis('caseHeight') && (
+                        <td style={{ ...tdStyle, textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>
+                          {b.case_height != null ? `${b.case_height} cm` : '—'}
+                        </td>
+                      )}
+                      {vis('caseLength') && (
+                        <td style={{ ...tdStyle, textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>
+                          {b.case_length != null ? `${b.case_length} cm` : '—'}
+                        </td>
+                      )}
+                      {vis('caseDepth') && (
+                        <td style={{ ...tdStyle, textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>
+                          {b.case_depth != null ? `${b.case_depth} cm` : '—'}
+                        </td>
+                      )}
+                      {vis('productWeight') && (
+                        <td style={{ ...tdStyle, textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>
+                          {b.product_weight != null ? `${b.product_weight} kg` : '—'}
+                        </td>
+                      )}
+                      {vis('kcal') && (
+                        <td style={{ ...tdStyle, textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>
+                          {b.kcal != null ? b.kcal : '—'}
+                        </td>
+                      )}
+                      {vis('barcodes') && (
+                        <td style={{ ...tdStyle, color: '#71717a', fontSize: 11, fontFamily: "'IBM Plex Mono', monospace" }}>
+                          {(barcodesMap.get(b.id) ?? []).join(', ') || '—'}
                         </td>
                       )}
                     </tr>
