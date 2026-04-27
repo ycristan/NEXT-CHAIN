@@ -214,13 +214,26 @@ export function Inventory() {
   }
 
   async function loadBarcodesMap() {
-    const { data } = await supabase.from('brand_barcodes').select('brand_id, barcode')
+    const PAGE_SIZE = 1000
+    let page = 0
     const map = new Map<string, string[]>()
-    for (const row of data ?? []) {
-      if (!row.brand_id) continue
-      const list = map.get(row.brand_id) ?? []
-      list.push(row.barcode)
-      map.set(row.brand_id, list)
+    while (true) {
+      const from = page * PAGE_SIZE
+      const to = from + PAGE_SIZE - 1
+      const { data, error } = await supabase
+        .from('brand_barcodes')
+        .select('brand_id, barcode')
+        .range(from, to)
+      if (error) { console.error('[Inventory] loadBarcodesMap error:', error.message); break }
+      if (!data || data.length === 0) break
+      for (const row of data) {
+        if (!row.brand_id) continue
+        const arr = map.get(row.brand_id) ?? []
+        arr.push(row.barcode)
+        map.set(row.brand_id, arr)
+      }
+      if (data.length < PAGE_SIZE) break
+      page++
     }
     setBarcodesMap(map)
   }
@@ -368,7 +381,7 @@ export function Inventory() {
 
   const visSet = new Set(visibleCols)
   const vis = (key: ColKey) => visSet.has(key)
-  const colSpan = ALL_COLS.filter(c => visSet.has(c.key)).length
+  const colSpan = Math.max(1, ALL_COLS.filter(c => visSet.has(c.key)).length)
 
   // Virtualizer — only active when there's data to show
   const virtualizer = useVirtualizer({

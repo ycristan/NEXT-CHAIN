@@ -147,7 +147,11 @@ export function INVColumnPicker({ visible, onChange, userId, isAdmin }: Props) {
 
   async function handleDelete(id: string, e: React.MouseEvent) {
     e.stopPropagation()
-    await supabase.from('inventory_column_views').delete().eq('id', id)
+    const { error } = await supabase.from('inventory_column_views').delete().eq('id', id)
+    if (error) {
+      console.error('[INVColumnPicker] handleDelete error:', error.message)
+      return
+    }
     setViews(prev => prev.filter(v => v.id !== id))
   }
 
@@ -156,7 +160,7 @@ export function INVColumnPicker({ visible, onChange, userId, isAdmin }: Props) {
     setOpen(false)
   }
 
-  const privateViews = views.filter(v => !v.is_public)
+  const privateViews = views.filter(v => !v.is_public && v.created_by === userId)
   const publicViews = views.filter(v => v.is_public)
 
   return (
