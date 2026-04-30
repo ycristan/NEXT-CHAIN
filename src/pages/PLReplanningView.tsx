@@ -74,6 +74,9 @@ export function PLReplanningView({ rack, officialSlots, onClose, onPublished }: 
   // ── Publish (authorize) state ───────────────────────────────
   const [publishModal, setPublishModal]     = useState(false)
   const [publishPwd, setPublishPwd]         = useState('')
+  useEffect(() => {
+    return () => { setPublishPwd('') }
+  }, [])
   const [showPwd, setShowPwd]               = useState(false)
   const [publishing, setPublishing]         = useState(false)
   const [publishError, setPublishError]     = useState<string | null>(null)
@@ -137,6 +140,7 @@ export function PLReplanningView({ rack, officialSlots, onClose, onPublished }: 
       email: user.email,
       password: publishPwd,
     })
+    setPublishPwd('')  // clear immediately after auth attempt, regardless of outcome
     if (authErr) {
       setPublishError('Incorrect password. Authorization denied.')
       setPublishing(false)
