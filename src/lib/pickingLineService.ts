@@ -236,7 +236,10 @@ export async function updateSlotLightAddress(
 ): Promise<AllocationResult> {
   const { error } = await supabase
     .from('slots')
-    .update({ light_address: lightAddress })
+    .update({
+      light_address: lightAddress,
+      light_status: lightAddress ? 'on' : 'off',
+    })
     .eq('id', slotId)
 
   return { error: error?.message ?? null }
