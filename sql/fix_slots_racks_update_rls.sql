@@ -7,7 +7,11 @@
 --
 -- New rules:
 --   slots UPDATE  → operator, manager, or admin
---   racks UPDATE  → manager or admin only
+--   racks UPDATE  → admin only
+--
+-- PREREQUISITE: run fix_has_write_role.sql first.
+-- slots_update uses has_write_role() (SECURITY DEFINER) to
+-- avoid RLS recursion — same pattern as is_admin() for CRIT-2.
 -- ============================================================
 
 -- ── slots ───────────────────────────────────────────────────
@@ -16,13 +20,7 @@ DROP POLICY IF EXISTS "slots_update" ON public.slots;
 CREATE POLICY "slots_update"
   ON public.slots FOR UPDATE
   TO authenticated
-  USING (
-    EXISTS (
-      SELECT 1 FROM public.profiles
-      WHERE id = auth.uid()
-        AND lower(role) IN ('operator', 'manager', 'admin')
-    )
-  );
+  USING (public.has_write_role());
 
 -- ── racks ───────────────────────────────────────────────────
 DROP POLICY IF EXISTS "racks_update" ON public.racks;

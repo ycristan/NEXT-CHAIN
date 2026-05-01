@@ -37,10 +37,14 @@ CREATE POLICY "brands_storage_insert"
   WITH CHECK (bucket_id = 'brands' AND public.is_admin());
 
 -- ── UPDATE: admin only ──────────────────────────────────────
+-- WITH CHECK is required for UPDATE: USING filters which rows are
+-- eligible; WITH CHECK ensures the row state after the update also
+-- satisfies the rule (prevents moving an object to another bucket).
 CREATE POLICY "brands_storage_update"
   ON storage.objects FOR UPDATE
   TO authenticated
-  USING (bucket_id = 'brands' AND public.is_admin());
+  USING     (bucket_id = 'brands' AND public.is_admin())
+  WITH CHECK (bucket_id = 'brands' AND public.is_admin());
 
 -- ── DELETE: admin only ──────────────────────────────────────
 CREATE POLICY "brands_storage_delete"
