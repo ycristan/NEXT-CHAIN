@@ -331,8 +331,14 @@ export function Fridge() {
             {filtered.map(item => (
               <div
                 key={item.id}
-                onMouseEnter={() => handleMouseEnter(item)}
-                onMouseLeave={handleMouseLeave}
+                onMouseEnter={e => {
+                  (e.currentTarget as HTMLElement).style.boxShadow = '0 2px 8px rgba(0,0,0,0.08)'
+                  handleMouseEnter(item)
+                }}
+                onMouseLeave={e => {
+                  (e.currentTarget as HTMLElement).style.boxShadow = 'none'
+                  handleMouseLeave()
+                }}
                 style={{
                   position: 'relative',
                   background: '#fff',
@@ -343,8 +349,6 @@ export function Fridge() {
                   cursor: 'default',
                   transition: 'box-shadow 0.15s',
                 }}
-                onMouseOver={e => { (e.currentTarget as HTMLElement).style.boxShadow = '0 2px 8px rgba(0,0,0,0.08)' }}
-                onMouseOut={e => { (e.currentTarget as HTMLElement).style.boxShadow = 'none'; handleMouseLeave() }}
               >
                 {/* Realtime flash overlay */}
                 {flashedItems.has(item.id) && (
