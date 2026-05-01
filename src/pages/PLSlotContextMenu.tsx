@@ -158,7 +158,6 @@ export function PLSlotContextMenu({ target, onClose, onSaved }: Props) {
       // Auto-activate light when an address is set; deactivate when cleared
       light_status: addr ? 'on' : 'off',
     }
-    console.log('[ContextMenu] Saving slot', target.slotId, target.binAddress, payload)
 
     const { error } = await supabase
       .from('slots')

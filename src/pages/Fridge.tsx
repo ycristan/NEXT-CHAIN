@@ -111,8 +111,6 @@ export function Fridge() {
     }
 
     async function handleFridgeChange(payload: { eventType: string; new: Record<string, unknown>; old: Record<string, unknown> }) {
-      console.log('[Realtime] MUDANÇA DETECTADA (fridge_items):', payload)
-
       if (payload.eventType === 'INSERT') {
         const itemId = payload.new.id as string
         const { data } = await supabase
@@ -146,9 +144,7 @@ export function Fridge() {
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         (payload: any) => { void handleFridgeChange(payload) }
       )
-      .subscribe((status, err) => {
-        console.log('[Realtime] fridge-realtime status:', status, err ?? '')
-      })
+      .subscribe()
 
     return () => { void supabase.removeChannel(channel) }
   }, [])

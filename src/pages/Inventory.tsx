@@ -235,7 +235,6 @@ export function Inventory() {
       page++
     }
 
-    console.debug(`[Inventory] Total brands loaded from DB: ${allBrands.length}`)
     setBrands(allBrands)
     if (!silent) setLoading(false)
   }

@@ -561,8 +561,6 @@ export function PickingLine() {
     }
 
     async function handleSlotChange(payload: { eventType: string; new: Record<string, unknown>; old: Record<string, unknown> }) {
-      console.log('[Realtime] MUDANÇA DETECTADA (slots):', payload)
-
       if (payload.eventType === 'UPDATE') {
         const slotId = payload.new.id as string
         const { data } = await supabase
@@ -634,7 +632,6 @@ export function PickingLine() {
         'postgres_changes',
         { event: '*', schema: 'public', table: 'racks' },
         (payload) => {
-          console.log('[Realtime] MUDANÇA DETECTADA (racks):', payload)
           void loadAllRef.current({ silent: true })
         }
       )
@@ -642,13 +639,10 @@ export function PickingLine() {
         'postgres_changes',
         { event: '*', schema: 'public', table: 'replanning_slots' },
         (payload) => {
-          console.log('[Realtime] MUDANÇA DETECTADA (replanning_slots):', payload)
           void getReplanningRackIds().then(drafts => setReplanningDrafts(drafts)).catch(() => {})
         }
       )
-      .subscribe((status, err) => {
-        console.log('[Realtime] pl-realtime status:', status, err ?? '')
-      })
+      .subscribe()
 
     return () => { void supabase.removeChannel(channel) }
   }, [])
