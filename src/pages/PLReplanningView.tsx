@@ -111,10 +111,6 @@ export function PLReplanningView({ rack, officialSlots, onClose, onPublished }: 
       setDraftSlots((data ?? []) as ReplanningSlot[])
     }
     setLoading(false)
-    // Refresh draft brand IDs after any draft mutation
-    if (rack.rack_type_id) {
-      void getAllDraftBrandIdsForRackType(rack.rack_type_id).then(setAllDraftBrandIds)
-    }
   }
 
   async function loadChecklist() {
