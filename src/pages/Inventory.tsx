@@ -195,6 +195,12 @@ export function Inventory() {
     void loadAllocMap()
     void loadBarcodesMap()
 
+    // Refresh allocMap when tab comes back to foreground (handles browser WebSocket throttling)
+    function handleVisibilityChange() {
+      if (document.visibilityState === 'visible') scheduleAllocMapRefresh()
+    }
+    document.addEventListener('visibilitychange', handleVisibilityChange)
+
     const channel = supabase.channel('inv-alloc-realtime')
       .on('postgres_changes', { event: '*', schema: 'public', table: 'slots' }, () => {
         scheduleAllocMapRefresh()
@@ -202,10 +208,14 @@ export function Inventory() {
       .on('postgres_changes', { event: '*', schema: 'public', table: 'fridge_items' }, () => {
         scheduleAllocMapRefresh()
       })
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'brands' }, () => {
+        void loadAll({ silent: true })
+      })
       .subscribe()
 
     return () => {
       if (allocDebounceRef.current) clearTimeout(allocDebounceRef.current)
+      document.removeEventListener('visibilitychange', handleVisibilityChange)
       void supabase.removeChannel(channel)
     }
   }, [])
