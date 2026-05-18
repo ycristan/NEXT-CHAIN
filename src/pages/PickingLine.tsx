@@ -631,14 +631,14 @@ export function PickingLine() {
       .on(
         'postgres_changes',
         { event: '*', schema: 'public', table: 'racks' },
-        (payload) => {
+        (_payload) => {
           void loadAllRef.current({ silent: true })
         }
       )
       .on(
         'postgres_changes',
         { event: '*', schema: 'public', table: 'replanning_slots' },
-        (payload) => {
+        (_payload) => {
           void getReplanningRackIds().then(drafts => setReplanningDrafts(drafts)).catch(() => {})
         }
       )
