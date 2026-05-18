@@ -19,7 +19,6 @@ export function INVDeleteConfirm({ brand, onClose, onDeleted }: Props) {
   const [step, setStep] = useState<'confirm' | 'verifying' | 'deleting'>('confirm')
 
   async function handleDelete() {
-    console.debug('[INVDeleteConfirm] profile role received:', profile?.role)
     if (profile?.role?.toLowerCase() !== 'admin') {
       setError('You do not have admin privileges to perform this action.')
       return

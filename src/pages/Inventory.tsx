@@ -14,6 +14,7 @@ import { INVFixSubcategories } from './INVFixSubcategories'
 import { INVColumnPicker, ALL_COLS, DEFAULT_COLS, type ColKey } from './INVColumnPicker'
 import { useSystemSettings } from '@/lib/useSystemSettings'
 import { searchBrands, type BrandSearchResult } from '@/lib/brandSearch'
+import { useToast } from '@/contexts/ToastContext'
 
 type SubTab = 'all' | 'active' | 'inactive'
 type ActiveSubTab = 'allocated' | 'unallocated'
@@ -86,6 +87,7 @@ export function Inventory() {
 
   const settings = useSystemSettings()
   const sym = settings?.currencySymbol ?? '€'
+  const { addToast } = useToast()
 
   const [brands, setBrands] = useState<BrandFull[]>([])
   const [loading, setLoading] = useState(true)
@@ -115,6 +117,12 @@ export function Inventory() {
   const [, startSearchTransition] = useTransition()
 
   const scrollRef = useRef<HTMLDivElement>(null)
+  const allocDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+
+  function scheduleAllocMapRefresh() {
+    if (allocDebounceRef.current) clearTimeout(allocDebounceRef.current)
+    allocDebounceRef.current = setTimeout(() => { void loadAllocMap() }, 50)
+  }
 
   function setActiveTab(tab: SubTab) {
     _store.activeTab = tab
@@ -187,21 +195,23 @@ export function Inventory() {
     void loadAllocMap()
     void loadBarcodesMap()
 
-    // Realtime: refresh alloc map on slot or fridge changes (any tab, any user)
     const channel = supabase.channel('inv-alloc-realtime')
       .on('postgres_changes', { event: '*', schema: 'public', table: 'slots' }, () => {
-        void loadAllocMap()
+        scheduleAllocMapRefresh()
       })
       .on('postgres_changes', { event: '*', schema: 'public', table: 'fridge_items' }, () => {
-        void loadAllocMap()
+        scheduleAllocMapRefresh()
       })
       .subscribe()
 
-    return () => { void supabase.removeChannel(channel) }
+    return () => {
+      if (allocDebounceRef.current) clearTimeout(allocDebounceRef.current)
+      void supabase.removeChannel(channel)
+    }
   }, [])
 
-  async function loadAll() {
-    setLoading(true)
+  async function loadAll({ silent = false }: { silent?: boolean } = {}) {
+    if (!silent) setLoading(true)
     let page = 0
     let allBrands: BrandFull[] = []
 
@@ -225,9 +235,8 @@ export function Inventory() {
       page++
     }
 
-    console.debug(`[Inventory] Total brands loaded from DB: ${allBrands.length}`)
     setBrands(allBrands)
-    setLoading(false)
+    if (!silent) setLoading(false)
   }
 
   async function loadBarcodesMap() {
@@ -240,7 +249,11 @@ export function Inventory() {
         .from('brand_barcodes')
         .select('brand_id, barcode')
         .range(from, to)
-      if (error) { console.error('[Inventory] loadBarcodesMap error:', error.message); break }
+      if (error) {
+        if (import.meta.env.DEV) console.error('[Inventory] loadBarcodesMap error:', error.message)
+        addToast('Could not load barcodes. Barcode columns will be empty.', 'error')
+        break
+      }
       if (!data || data.length === 0) break
       for (const row of data) {
         if (!row.brand_id) continue
@@ -448,7 +461,7 @@ export function Inventory() {
 
   function openCreate() { setEditingBrand(null); setShowForm(true) }
   function openEdit() { if (!selectedBrand) return; setEditingBrand(selectedBrand); setShowForm(true) }
-  function handleSaved() { setShowForm(false); void loadAll() }
+  function handleSaved() { setShowForm(false); void loadAll({ silent: true }) }
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
@@ -883,7 +896,7 @@ export function Inventory() {
           <INVDetailPanel
             brand={selectedBrand}
             onEdit={openEdit}
-            onRefresh={loadAll}
+            onRefresh={() => void loadAll({ silent: true })}
             onDelete={() => setShowDelete(true)}
             onNotifyAdmin={() => setShowNotify(true)}
           />
@@ -917,14 +930,14 @@ export function Inventory() {
       {showImport && (
         <INVImport
           onClose={() => setShowImport(false)}
-          onDone={() => { setShowImport(false); void loadAll() }}
+          onDone={() => { setShowImport(false); void loadAll({ silent: true }) }}
         />
       )}
 
       {showFixSubs && (
         <INVFixSubcategories
           onClose={() => setShowFixSubs(false)}
-          onDone={() => { void loadAll() }}
+          onDone={() => { void loadAll({ silent: true }) }}
         />
       )}
 
