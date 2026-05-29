@@ -42,12 +42,14 @@ CREATE TABLE IF NOT EXISTS public.client_accounts (
 
 ALTER TABLE public.client_accounts ENABLE ROW LEVEL SECURITY;
 
+DROP POLICY IF EXISTS "client_accounts_select" ON public.client_accounts;
 CREATE POLICY "client_accounts_select" ON public.client_accounts
   FOR SELECT USING (
     is_admin() OR has_write_role() OR
     (is_client() AND id IN (SELECT get_client_account_ids()))
   );
 
+DROP POLICY IF EXISTS "client_accounts_admin_write" ON public.client_accounts;
 CREATE POLICY "client_accounts_admin_write" ON public.client_accounts
   FOR ALL USING (is_admin());
 
@@ -60,11 +62,13 @@ CREATE TABLE IF NOT EXISTS public.client_account_users (
 
 ALTER TABLE public.client_account_users ENABLE ROW LEVEL SECURITY;
 
+DROP POLICY IF EXISTS "cau_select" ON public.client_account_users;
 CREATE POLICY "cau_select" ON public.client_account_users
   FOR SELECT USING (
     is_admin() OR has_write_role() OR user_id = auth.uid()
   );
 
+DROP POLICY IF EXISTS "cau_admin_write" ON public.client_account_users;
 CREATE POLICY "cau_admin_write" ON public.client_account_users
   FOR ALL USING (is_admin());
 
@@ -83,12 +87,14 @@ CREATE TABLE IF NOT EXISTS public.client_buildings (
 
 ALTER TABLE public.client_buildings ENABLE ROW LEVEL SECURITY;
 
+DROP POLICY IF EXISTS "buildings_select" ON public.client_buildings;
 CREATE POLICY "buildings_select" ON public.client_buildings
   FOR SELECT USING (
     is_admin() OR has_write_role() OR
     (is_client() AND client_account_id IN (SELECT get_client_account_ids()))
   );
 
+DROP POLICY IF EXISTS "buildings_admin_write" ON public.client_buildings;
 CREATE POLICY "buildings_admin_write" ON public.client_buildings
   FOR ALL USING (is_admin());
 
@@ -101,12 +107,14 @@ CREATE TABLE IF NOT EXISTS public.client_catalogs (
 
 ALTER TABLE public.client_catalogs ENABLE ROW LEVEL SECURITY;
 
+DROP POLICY IF EXISTS "catalogs_select" ON public.client_catalogs;
 CREATE POLICY "catalogs_select" ON public.client_catalogs
   FOR SELECT USING (
     is_admin() OR has_write_role() OR
     (is_client() AND client_account_id IN (SELECT get_client_account_ids()))
   );
 
+DROP POLICY IF EXISTS "catalogs_admin_write" ON public.client_catalogs;
 CREATE POLICY "catalogs_admin_write" ON public.client_catalogs
   FOR ALL USING (is_admin());
 
@@ -121,9 +129,11 @@ CREATE TABLE IF NOT EXISTS public.brand_prices (
 
 ALTER TABLE public.brand_prices ENABLE ROW LEVEL SECURITY;
 
+DROP POLICY IF EXISTS "brand_prices_select" ON public.brand_prices;
 CREATE POLICY "brand_prices_select" ON public.brand_prices
   FOR SELECT USING (is_admin() OR has_write_role() OR is_client());
 
+DROP POLICY IF EXISTS "brand_prices_admin_write" ON public.brand_prices;
 CREATE POLICY "brand_prices_admin_write" ON public.brand_prices
   FOR ALL USING (is_admin());
 
@@ -137,9 +147,11 @@ CREATE TABLE IF NOT EXISTS public.cutoff_config (
 
 ALTER TABLE public.cutoff_config ENABLE ROW LEVEL SECURITY;
 
+DROP POLICY IF EXISTS "cutoff_config_select" ON public.cutoff_config;
 CREATE POLICY "cutoff_config_select" ON public.cutoff_config
   FOR SELECT USING (true);
 
+DROP POLICY IF EXISTS "cutoff_config_admin_write" ON public.cutoff_config;
 CREATE POLICY "cutoff_config_admin_write" ON public.cutoff_config
   FOR ALL USING (is_admin());
 
@@ -158,9 +170,11 @@ CREATE TABLE IF NOT EXISTS public.public_holidays (
 
 ALTER TABLE public.public_holidays ENABLE ROW LEVEL SECURITY;
 
+DROP POLICY IF EXISTS "holidays_select" ON public.public_holidays;
 CREATE POLICY "holidays_select" ON public.public_holidays
   FOR SELECT USING (true);
 
+DROP POLICY IF EXISTS "holidays_admin_write" ON public.public_holidays;
 CREATE POLICY "holidays_admin_write" ON public.public_holidays
   FOR ALL USING (is_admin());
 
@@ -209,12 +223,14 @@ END $$;
 
 ALTER TABLE public.orders ENABLE ROW LEVEL SECURITY;
 
+DROP POLICY IF EXISTS "orders_select" ON public.orders;
 CREATE POLICY "orders_select" ON public.orders
   FOR SELECT USING (
     is_admin() OR has_write_role() OR
     (is_client() AND client_account_id IN (SELECT get_client_account_ids()))
   );
 
+DROP POLICY IF EXISTS "orders_insert_client" ON public.orders;
 CREATE POLICY "orders_insert_client" ON public.orders
   FOR INSERT WITH CHECK (
     is_admin() OR
@@ -223,11 +239,19 @@ CREATE POLICY "orders_insert_client" ON public.orders
       AND ordered_by = auth.uid())
   );
 
+DROP POLICY IF EXISTS "orders_update" ON public.orders;
 CREATE POLICY "orders_update" ON public.orders
   FOR UPDATE USING (
     is_admin() OR has_write_role() OR
     (is_client()
       AND ordered_by = auth.uid()
+      AND status IN ('open_prep', 'open'))
+  )
+  WITH CHECK (
+    is_admin() OR has_write_role() OR
+    (is_client()
+      AND ordered_by = auth.uid()
+      AND client_account_id IN (SELECT get_client_account_ids())
       AND status IN ('open_prep', 'open'))
   );
 
@@ -251,6 +275,7 @@ CREATE TABLE IF NOT EXISTS public.order_items (
 
 ALTER TABLE public.order_items ENABLE ROW LEVEL SECURITY;
 
+DROP POLICY IF EXISTS "order_items_select" ON public.order_items;
 CREATE POLICY "order_items_select" ON public.order_items
   FOR SELECT USING (
     is_admin() OR has_write_role() OR
@@ -260,6 +285,7 @@ CREATE POLICY "order_items_select" ON public.order_items
     ))
   );
 
+DROP POLICY IF EXISTS "order_items_insert_client" ON public.order_items;
 CREATE POLICY "order_items_insert_client" ON public.order_items
   FOR INSERT WITH CHECK (
     is_admin() OR has_write_role() OR
@@ -269,6 +295,7 @@ CREATE POLICY "order_items_insert_client" ON public.order_items
     ))
   );
 
+DROP POLICY IF EXISTS "order_items_update" ON public.order_items;
 CREATE POLICY "order_items_update" ON public.order_items
   FOR UPDATE USING (
     is_admin() OR has_write_role() OR
@@ -278,6 +305,7 @@ CREATE POLICY "order_items_update" ON public.order_items
     ))
   );
 
+DROP POLICY IF EXISTS "order_items_delete_client" ON public.order_items;
 CREATE POLICY "order_items_delete_client" ON public.order_items
   FOR DELETE USING (
     is_admin() OR
