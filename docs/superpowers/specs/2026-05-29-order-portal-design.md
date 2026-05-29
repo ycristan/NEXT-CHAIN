@@ -66,7 +66,7 @@ Login (username + PIN)
   → linked to N accounts? → Account Selector → Building Selector → Catalog
 ```
 
-**Order visibility:** Each user sees only orders they personally submitted (`orders.ordered_by = auth.uid()`). There is no shared order history across users of the same account.
+**Order visibility:** All users linked to a client account see the full order history for that account (`orders.client_account_id`). The `ordered_by` field is stored for traceability (who submitted each order) but does not restrict visibility. This supports a future **re-order** feature where any user can replicate a past order.
 
 ---
 
@@ -209,7 +209,7 @@ Single-row global config table.
 - **Add to cart:** `+` button becomes inline `−/+` counter with blue highlight — no navigation away
 - **Search:** global text search within the account's catalog (filtered by active category pill)
 - **Checkout flow:** Cart page → delivery date calendar → PO field (optional) → notes → Submit
-- **My Orders:** list with color-coded status badges; tap/click → order detail; Edit button visible while `status < picking`
+- **My Orders:** full account order history (all users); color-coded status badges; tap/click → order detail; Edit button visible while `status < picking`; future: Re-order button to replicate a past order
 
 ---
 
