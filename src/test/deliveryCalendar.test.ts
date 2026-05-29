@@ -49,7 +49,7 @@ describe('getAvailableDeliveryDates', () => {
     const sundayBefore = new Date('2026-08-02T10:00:00') // Sunday before cutoff
     const account = { ...IE_ACCOUNT, weekend_delivery: false }
     const dates = getAvailableDeliveryDates(account, BASE_CONFIG, holidays, sundayBefore)
-    // Sunday after cutoff → candidate is Tuesday; but Monday is holiday → first is Tuesday
+    // Sunday before cutoff → candidate is Monday; Monday is holiday → first is Tuesday
     expect(dates[0]).not.toBe('2026-08-03')
     expect(dates[0]).toBe('2026-08-04')
   })
