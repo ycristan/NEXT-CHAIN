@@ -131,7 +131,13 @@ ALTER TABLE public.brand_prices ENABLE ROW LEVEL SECURITY;
 
 DROP POLICY IF EXISTS "brand_prices_select" ON public.brand_prices;
 CREATE POLICY "brand_prices_select" ON public.brand_prices
-  FOR SELECT USING (is_admin() OR has_write_role() OR is_client());
+  FOR SELECT USING (
+    is_admin() OR has_write_role() OR
+    (is_client() AND brand_id IN (
+      SELECT brand_id FROM public.client_catalogs
+      WHERE client_account_id IN (SELECT get_client_account_ids())
+    ))
+  );
 
 DROP POLICY IF EXISTS "brand_prices_admin_write" ON public.brand_prices;
 CREATE POLICY "brand_prices_admin_write" ON public.brand_prices
@@ -233,7 +239,7 @@ CREATE POLICY "orders_select" ON public.orders
 DROP POLICY IF EXISTS "orders_insert_client" ON public.orders;
 CREATE POLICY "orders_insert_client" ON public.orders
   FOR INSERT WITH CHECK (
-    is_admin() OR
+    is_admin() OR has_write_role() OR
     (is_client()
       AND client_account_id IN (SELECT get_client_account_ids())
       AND ordered_by = auth.uid())

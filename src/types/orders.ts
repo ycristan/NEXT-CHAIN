@@ -124,7 +124,7 @@ export interface CartItem {
   price_per_case: number
   price_per_unit: number | null
   quantity_cases: number
-  quantity_units: number
+  quantity_units: number | null
 }
 
 // Order with joined data for display
