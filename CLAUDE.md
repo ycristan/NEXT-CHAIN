@@ -118,6 +118,15 @@ sql/                   # todos os scripts SQL para Supabase
     - `handleSlotMouseEnter` e `handleSlotMouseLeave` como `useCallback(fn, [])` — referências estáveis
   - **Supabase Realtime** — sync multi-tab/multi-usuário sem F5 (ver seção abaixo)
 
+- **Order Portal** — novo módulo em `feat/order-portal` (Phase 1 parcialmente concluída):
+  - `sql/order_portal_setup.sql` — 9 tabelas (client_accounts, client_account_users, client_buildings, client_catalogs, brand_prices, cutoff_config, orders, order_items, public_holidays) + RLS + trigger order_number. **⚠️ Ainda não executado no Supabase.**
+  - `sql/public_holidays_ie_uk.sql` — 40 feriados IE + GB-NIR 2025-2026. **⚠️ Ainda não executado no Supabase.**
+  - `src/types/orders.ts` — todos os tipos TypeScript do portal (ClientAccount, ClientBuilding, Order, OrderItem, DeliveryCalendarResult, CutoffConfig, etc.)
+  - `src/lib/deliveryCalendar.ts` — lógica de cut-off (11:00 default), skip weekends/holidays, 14-day window, same_day_delivery flag, 60-day safety limit. Função pura com `now: Date` injetável.
+  - `src/test/deliveryCalendar.test.ts` — 11 testes TDD passando (cut-off, weekend skip, holiday skip, same-day, region isolation IE vs GB-NIR, custom cutoff override)
+  - Auth: role `client` com login username+PIN (email oculto `<username>@portal.nextchain.internal` no Supabase Auth)
+  - **PENDENTES:** `portalAuth.ts` (Task 5), routing App.tsx + ClientPortal pages (Task 6), PortalContext (Task 7), build check (Task 8)
+
 ## Módulos pendentes (stubs)
 - Dashboard — vazio
 - Products, Movements, Reports, Settings, Suppliers, Warehouse General
@@ -201,6 +210,12 @@ Bin address format: `"<rack_name> <col_letter><row_padded_2>"` ex: "40 A01" — 
 O Supabase não executa scripts automaticamente. Sem este aviso, a feature falha silenciosamente.
 
 ## Scripts SQL (pasta sql/)
+
+**Order Portal (feat/order-portal — ainda não executados no Supabase):**
+- `order_portal_setup.sql` — 9 tabelas + RLS + trigger + cutoff_config. **Rodar PRIMEIRO.**
+- `public_holidays_ie_uk.sql` — seed 40 feriados IE + GB-NIR 2025-2026. **Rodar DEPOIS.**
+
+**Existentes (já executados):**
 - `supabase_setup.sql` — setup inicial
 - `supabase_v2_migration.sql` — rack_types, categories, update_updated_at()
 - `supabase_brands_migration.sql` — tabela brands
@@ -288,6 +303,34 @@ useEffect(() => { loadAllRef.current = loadAll }) // sem deps — atualiza todo 
 
 ## Variáveis de ambiente
 `.env` contém `VITE_SUPABASE_URL` e `VITE_SUPABASE_ANON_KEY`
+
+---
+
+## DIRETRIZ DE SEGURANÇA: Order Portal RLS
+
+**Issues críticos identificados em code review (2026-06-03) — corrigir antes de produção:**
+
+1. **`brand_prices` SELECT policy vaza preços entre clientes** (`sql/order_portal_setup.sql:134`)
+   - Policy atual `is_client()` permite SELECT em TODOS os preços, sem escopo de conta
+   - Fix: `sql/fix_brand_prices_rls.sql` — restringir a brands no catálogo da conta do cliente
+
+2. **`createPortalUser` requer Edge Function** (Task 5 — `portalAuth.ts`)
+   - `supabase.auth.admin.createUser()` requer `service_role` key
+   - **NUNCA colocar `service_role` em variável `VITE_*`** — são embebidas no bundle JS público
+   - Implementar como Supabase Edge Function com acesso ao service_role via env secreta
+
+3. **`orders_insert_client` falta `has_write_role()`** — staff interno não consegue inserir pedidos (bloqueia Phase 3)
+
+4. **`CartItem.quantity_units: number`** deve ser `number | null` para alinhar com `OrderItem` (`src/types/orders.ts:127`)
+
+**RLS pattern obrigatório para dados scoped por cliente:**
+```sql
+-- ERRADO — vaza dados entre clientes:
+USING (is_client())
+
+-- CORRETO — restrito à conta do cliente autenticado:
+USING (is_client() AND client_account_id IN (SELECT get_client_account_ids()))
+```
 
 ---
 
