@@ -124,8 +124,43 @@ sql/                   # todos os scripts SQL para Supabase
   - `src/types/orders.ts` — todos os tipos TypeScript do portal (ClientAccount, ClientBuilding, Order, OrderItem, DeliveryCalendarResult, CutoffConfig, etc.)
   - `src/lib/deliveryCalendar.ts` — lógica de cut-off (11:00 default), skip weekends/holidays, 14-day window, same_day_delivery flag, 60-day safety limit. Função pura com `now: Date` injetável.
   - `src/test/deliveryCalendar.test.ts` — 11 testes TDD passando (cut-off, weekend skip, holiday skip, same-day, region isolation IE vs GB-NIR, custom cutoff override)
-  - Auth: role `client` com login username+PIN (email oculto `<username>@portal.nextchain.internal` no Supabase Auth)
-  - **PENDENTES:** `portalAuth.ts` (Task 5), routing App.tsx + ClientPortal pages (Task 6), PortalContext (Task 7), build check (Task 8)
+  - **PENDENTES:** `portalAuth.ts` (Task 5), Edge Function `invite-user` (Task 5b), routing/UnifiedLogin (Task 6), PortalContext (Task 7), build check (Task 8)
+  - ✅ SQL executado no Supabase em 2026-06-03 via MCP
+
+### Decisões de autenticação — Login unificado (definidas 2026-06-03)
+
+**Princípio:** Uma única página de login para TODOS os utilizadores. Sem emails visíveis.
+
+**Credenciais:**
+- Todos os utilizadores (staff + clientes): `username` (sem @) + `PIN alfanumérico 6-8 chars`
+- Supabase Auth armazena internamente: `username@nextchain.internal` como email
+- `profiles.real_email` — email verdadeiro, usado apenas para convites e recuperação (nunca no login)
+- PINs são bcrypt hashed — **impossível ver o PIN de qualquer utilizador, incluindo admin**
+- Admin pode apenas REDEFINIR (não ver) via painel
+
+**Fluxo de convite (todos os utilizadores):**
+1. Admin regista email real + vincula a `client_account` (para clientes) ou define `role` (para staff)
+2. Edge Function `invite-user` (service_role) envia email de convite
+3. Utilizador clica no link → página de setup → escolhe `username` + define `PIN`
+4. Sistema cria `username@nextchain.internal` no Supabase Auth
+5. Login automático → redireciona por `profile.role`
+
+**Routing pós-login:**
+- `admin/manager/operator/viewer` → Warehouse Management (app atual)
+- `client` → Order Portal
+
+**Recuperação de acesso:**
+- Primária: email automático → link → reset PIN (mostra username na página)
+- Secundária: admin redefine via painel (para email inacessível)
+- Recuperação por email preferida: verifica identidade por posse do email, evita engenharia social
+
+**Regras do PIN (mostradas na UI de setup):**
+- 6 a 8 caracteres alfanuméricos
+- Ninguém consegue ver o PIN — só redefinir
+- Guardar em local seguro
+
+**NUNCA colocar `service_role` em variável `VITE_*`** — são embebidas no bundle JS público.
+Toda operação que requer `service_role` (criar utilizador, enviar convite) → Supabase Edge Function.
 
 ## Módulos pendentes (stubs)
 - Dashboard — vazio
